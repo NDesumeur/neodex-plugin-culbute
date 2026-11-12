@@ -6,7 +6,7 @@ const HTML = `<div class="appWrap wide">
     <div class="gSide">
       <div class="sysCard"><b>RECORDS</b><div class="gStats" id="cbStats"></div></div>
       <div class="row"><button class="btn main" id="cbNew">NOUVELLE PARTIE</button></div>
-      <div class="hint">Plus tu maintiens, plus la bouteille saute loin et haut : les points blancs montrent le début du saut. En l'air, elle tourne toute seule ; maintiens pour qu'elle tourne deux fois plus vite. Elle doit retomber debout sur le dessus d'un meuble, à 25° près ; presque droite, c'est PARFAIT et ça compte double. Sauter par-dessus un meuble rapporte plus. Si elle se renverse ou tombe par terre, c'est fini ; si elle retombe sur le même meuble, tu peux réessayer.</div>
+      <div class="hint">Plus tu maintiens, plus la bouteille saute loin et haut : les points blancs montrent tout le saut, jusqu'au meuble où elle retombe. En l'air, elle tourne toute seule ; maintiens pour qu'elle tourne deux fois plus vite. Elle doit retomber debout sur le dessus d'un meuble, à 40° près ; presque droite, c'est PARFAIT et ça compte double. Sauter par-dessus un meuble rapporte plus. Si elle se renverse ou tombe par terre, c'est fini ; si elle retombe sur le même meuble, tu peux réessayer.</div>
     </div></div>
 </div>`;
 const CSS = `.gMain{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap}
@@ -319,8 +319,8 @@ const seeded = s => () => { s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 
 const pxFont = (g, text, x, y, color, size = 8, align = 'left') => { const s = PXK.scale(size); PXK.fill(g, text, x + s, y + s, '#05010b', s, align); PXK.fill(g, text, x, y, color, s, align); };
 
 /* ---------- Culbute : une bouteille saute de meuble en meuble dans un salon. Maintenir charge le saut, lâcher la lance ;
-   maintenir pendant le vol la fait tourner plus vite. Elle doit se poser debout (à 25° près) sur le dessus d'un meuble ---------- */
-const CB = {W: 160, H: 150, HUD: 12, FLOOR: 140, G: .16, SPIN: .11, TUCK: .23, OK: .45, PERFECT: .14, CHARGE: 50};
+   maintenir pendant le vol la fait tourner plus vite. Elle doit se poser debout (à 40° près) sur le dessus d'un meuble ---------- */
+const CB = {W: 160, H: 150, HUD: 12, FLOOR: 140, G: .16, SPIN: .11, TUCK: .23, OK: .7, PERFECT: .2, CHARGE: 50};
 const cbs = gstore('culbute', {games: 0, flips: 0, perfect: 0});
 let cb = null, cbac = null, cbMute = false;
 // la bouteille (7 x 16) : bouchon, goulot, eau, étiquette ; 32 images tournées d'avance, au pixel près
@@ -372,7 +372,7 @@ function cbNew() {
 function cbGen(n) {
   while (cb.furn.length < n) {
     const p = cb.furn[cb.furn.length - 1], k = cb.furn.length, r = cb.rnd, d = Math.min(1, k / 40);
-    const w = Math.round(26 - d * 10 + r() * 10), gap = Math.round(22 + r() * (30 + d * 40)), y = Math.round(Math.max(56, Math.min(124, p.y + (r() - .5) * (40 + d * 30))));
+    const w = Math.round(32 - d * 8 + r() * 10), gap = Math.round(16 + r() * (22 + d * 30)), y = Math.round(Math.max(56, Math.min(124, p.y + (r() - .5) * (40 + d * 30))));
     cb.furn.push({x: p.x + p.w + gap, y, w, kind: CB_KINDS[Math.floor(r() * CB_KINDS.length)], n: k});
   }
 }
@@ -434,8 +434,8 @@ function cbDraw() {
   // le parquet
   px(g, '#6a4028', 0, FLOOR, W, H - FLOOR); for (let x = ((-ox % 16) + 16) % 16 - 16; x < W; x += 16) { px(g, '#4a2a18', x, FLOOR, 1, H - FLOOR); px(g, '#8a5a38', x + 1, FLOOR, 14, 1); }
   for (const f of cb.furn) cbFurniture(g, f, ox);
-  // la trajectoire pendant la charge : quelques points seulement (sans rotation), à toi d'estimer la suite
-  if (cb.mode === 'play' && !cb.fly && cb.hold) { const b = {x: cb.x, y: cb.y, a: 0}; cbLaunch(b, .15 + cb.charge * .85); for (let i = 0; i < 26; i++) { cbStep(b, false, []); if (i % 3 === 2) px(g, '#ffffff', Math.round(b.x - ox), Math.round(b.y + 8)); } }
+  // la trajectoire pendant la charge, jusqu'à l'atterrissage (sans la rotation : à toi de choisir quand maintenir)
+  if (cb.mode === 'play' && !cb.fly && cb.hold) { const b = {x: cb.x, y: cb.y, a: 0}; cbLaunch(b, .15 + cb.charge * .85); for (let i = 0; i < 120; i++) { const r = cbStep(b, false, cb.furn.slice(cb.at + 1)); if (i % 3 === 2 || r) px(g, r ? '#ffd84a' : '#ffffff', Math.round(b.x - ox) - (r ? 1 : 0), Math.round(b.y + 8), r ? 3 : 1, 1); if (r) break; } }
   for (const d of cb.drops) px(g, '#7ac8f0', d.x - ox, d.y, 2, 1);
   const fr = ((Math.round(cbAngle(cb.a) / (Math.PI * 2) * 32) % 32) + 32) % 32;
   g.drawImage(CB_ROT[fr], Math.round(cb.x - ox) - 10, Math.round(cb.y) - 10 + (cb.hold && !cb.fly ? Math.round(cb.charge * 2) : 0));

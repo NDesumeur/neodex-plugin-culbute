@@ -12,9 +12,9 @@ A pixel art skill game: a water bottle jumps from furniture to furniture in a li
 
 ## How it works
 
-- The longer you hold, the **further and higher** the jump. The gauge next to the bottle and a few white dots show the start of the jump.
+- The longer you hold, the **further and higher** the jump. The gauge next to the bottle and white dots show the whole jump; the yellow dot marks where it lands.
 - In the air, the bottle spins slowly by itself. **Holding** makes it spin faster: judge it so it has made one turn (or two) when it arrives.
-- It must land **upright** on top of a piece of furniture, within 25°. Almost straight (within 8°) is **PERFECT**: points count double.
+- It must land **upright** on top of a piece of furniture, within 40°. Almost straight (within 11°) is **PERFECT**: points count double.
 - Jumping **over** a piece of furniture to reach the next scores more. Each flip landed in a row adds a bonus.
 - If it lands back on the starting piece, nothing is lost. If it **tips over** or falls **on the floor**, the game is over.
 - Tables, stools, stacks of books, chests and crates: furniture gets smaller and further apart as you go. A number marks every tenth piece.
