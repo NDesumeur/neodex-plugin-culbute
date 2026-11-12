@@ -1,0 +1,22 @@
+{
+  "id": "neodex.culbute",
+  "name": "Culbute",
+  "version": "1.0.0",
+  "author": "NDesumeur",
+  "description": "Jeu d'adresse : une bouteille d'eau saute de meuble en meuble dans un salon, tables, tabourets, piles de livres, commodes et caisses. Maintiens pour charger le saut, lâche pour la lancer, et maintiens en l'air pour la faire tourner plus vite : elle doit retomber debout. Culbutes parfaites qui comptent double, sauts par-dessus un meuble et séries. Score et record.",
+  "icon": "icon.png",
+  "entry": "index.js",
+  "view": "culbute",
+  "neobase": ">=4.0.0",
+  "type": "app",
+  "category": "Jeux",
+  "syncMode": "progression",
+  "syncInfo": "Record.",
+  "mobile": false,
+  "system": false,
+  "dependencies": {},
+  "sdk": "2.1.0",
+  "permissions": [
+    "storage"
+  ]
+}
