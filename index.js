@@ -5,17 +5,21 @@ const HTML = `<div class="appWrap wide">
   <div class="gMain"><div class="gameBox"><canvas id="cbCanvas" width="160" height="150" role="img" aria-label="Culbute"></canvas></div>
     <div class="gSide">
       <div class="sysCard"><b>RECORDS</b><div class="gStats" id="cbStats"></div></div>
-      <div class="row"><button class="btn main" id="cbNew">NOUVELLE PARTIE</button></div>
-      <div class="hint">Plus tu maintiens, plus la bouteille saute loin et haut : les points blancs montrent tout le saut, jusqu'au meuble où elle retombe. En l'air, elle tourne toute seule ; maintiens pour qu'elle tourne deux fois plus vite. Elle doit retomber debout sur le dessus d'un meuble, à 40° près ; presque droite, c'est PARFAIT et ça compte double. Sauter par-dessus un meuble rapporte plus. Si elle se renverse ou tombe par terre, c'est fini ; si elle retombe sur le même meuble, tu peux réessayer.</div>
+      <div class="row"><button class="btn main" id="cbNew">NOUVELLE PARTIE</button><button class="btn" id="cbFs">PLEIN ÉCRAN</button></div>
+      <div class="hint">Le fantôme de la bouteille montre où elle va retomber et dans quel sens : vert, elle se posera debout ; orange, maintiens pour la faire tourner plus vite ; rouge, elle tombe à côté. Trois bouteilles par partie.</div>
+      <div class="hint">Manette : A (ou B, RB, RT, croix haut) maintenu pour charger puis pour tourner, Start pour la pause.</div>
+      <div class="hint">Plus tu maintiens, plus la bouteille saute loin et haut : les points blancs montrent tout le saut, jusqu'au meuble où elle retombe. En l'air, elle tourne toute seule ; maintiens pour qu'elle tourne deux fois plus vite. Elle doit retomber debout sur le dessus d'un meuble, à 46° près ; presque droite, c'est PARFAIT et ça compte double. Sauter par-dessus un meuble rapporte plus. Si elle se renverse ou tombe par terre, tu perds une bouteille et tu repars du même meuble ; si elle retombe sur le même meuble, tu peux réessayer. Tous les 15 meubles, on change de pièce : salon, cuisine, chambre, jardin.</div>
     </div></div>
 </div>`;
 const CSS = `.gMain{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap}
 .gameBox{display:grid;place-items:center;padding:10px;background:#05010b;flex:0 0 auto;position:relative}
-.gameBox canvas{height:min(72vh,660px);width:auto;aspect-ratio:160/150;image-rendering:pixelated;cursor:var(--cp,pointer);touch-action:none}
+.gameBox canvas{height:max(300px,min(calc(100vh - 210px),1050px));width:auto;max-width:calc(100vw - 40px);aspect-ratio:160/150;image-rendering:pixelated;cursor:var(--cp,pointer);touch-action:none}
 .gSide{display:flex;flex-direction:column;gap:14px;flex:1;min-width:250px;max-width:420px}
 .gSide .sysCard{display:flex;flex-direction:column}
 .gStats{display:grid;grid-template-columns:1fr auto;gap:4px 14px}
-.gStats b{text-align:right}`;
+.gStats b{text-align:right}
+.gameBox:fullscreen{padding:0}
+.gameBox:fullscreen canvas{height:min(100vh,calc(100vw * 150 / 160));max-width:none}`;
 /* ---------- l'habillage pixel art, dessiné à la main : police bitmap (accents compris), cadres, boutons, icônes ----------
    Tout est en pixels pleins, agrandis par 2 sans lissage : aucun dégradé, aucune ombre floue. */
 const PXK = (() => {
@@ -320,7 +324,7 @@ const pxFont = (g, text, x, y, color, size = 8, align = 'left') => { const s = P
 
 /* ---------- Culbute : une bouteille saute de meuble en meuble dans un salon. Maintenir charge le saut, lâcher la lance ;
    maintenir pendant le vol la fait tourner plus vite. Elle doit se poser debout (à 40° près) sur le dessus d'un meuble ---------- */
-const CB = {W: 160, H: 150, HUD: 12, FLOOR: 140, G: .16, SPIN: .11, TUCK: .23, OK: .7, PERFECT: .2, CHARGE: 50};
+const CB = {W: 160, H: 150, HUD: 12, FLOOR: 140, G: .16, SPIN: .11, TUCK: .23, OK: .8, PERFECT: .25, CHARGE: 50, LIVES: 3};  // 46° de marge pour tenir debout, 14° pour PARFAIT
 const cbs = gstore('culbute', {games: 0, flips: 0, perfect: 0});
 let cb = null, cbac = null, cbMute = false;
 // la bouteille (7 x 16) : bouchon, goulot, eau, étiquette ; 32 images tournées d'avance, au pixel près
@@ -333,7 +337,13 @@ const CB_ROT = Array.from({length: 32}, (_, i) => {
     if (col) px(g, col, x, y);
   }
   return c; });
-// les meubles : un dessus (le seul endroit où se poser) et ce qu'il y a dessous
+// les pièces qui se suivent, 15 meubles chacune : salon, cuisine, chambre, jardin ; leurs meubles selon la hauteur du dessus (haut, moyen, bas)
+const CB_ROOMS = [
+  {name: 'LE SALON', tall: ['livres', 'commode'], mid: ['table', 'commode', 'caisse'], low: ['tabouret', 'caisse']},
+  {name: 'LA CUISINE', tall: ['frigo'], mid: ['plan', 'frigo', 'plan'], low: ['chaise', 'tabouret']},
+  {name: 'LA CHAMBRE', tall: ['armoire'], mid: ['lit', 'commode', 'lit'], low: ['chevet', 'coffre']},
+  {name: 'LE JARDIN', tall: ['muret'], mid: ['banc', 'tonneau'], low: ['pot', 'souche']}];
+const cbRoom = n => Math.floor(n / 15) % CB_ROOMS.length;
 const CB_KINDS = ['table', 'tabouret', 'livres', 'commode', 'caisse'];
 function cbFurniture(g, f, ox) {
   const x = Math.round(f.x - ox), y = Math.round(f.y), w = f.w, h = CB.FLOOR - y;
@@ -345,35 +355,84 @@ function cbFurniture(g, f, ox) {
   } else if (f.kind === 'livres') {
     let yy = y; const cols = [['#3a6ac8', '#5a8ae8'], ['#4aa84a', '#7ac87a'], ['#c83a5a', '#e86a8a'], ['#c8a03a', '#e8c86a']];
     for (let i = 0; yy < CB.FLOOR; i++) { const bh = 5 + (i % 2), dx = (i * 3) % 5 - 2, c = cols[i % 4]; px(g, '#1a1018', x + dx - 1, yy - 1, w + 2, bh + 1); px(g, c[0], x + dx, yy, w, bh - 1); px(g, c[1], x + dx, yy, w, 1); px(g, '#f0e8d8', x + dx + w - 3, yy + 1, 2, bh - 2); yy += bh; }
-  } else {  // commode ou caisse : un bloc plein avec tiroirs ou planches
-    const wood = f.kind === 'commode' ? ['#8a5a3a', '#b87a4a', '#5a3a22'] : ['#b8884a', '#d8a868', '#7a5a2a'];
+  } else if (f.kind === 'chaise' || f.kind === 'banc') {  // l'assise, les pieds ; le dossier de la chaise dépasse à gauche
+    const top = f.kind === 'chaise' ? ['#a86a3a', '#d8945a', '#7a4a2a'] : ['#4a8a4a', '#7ac87a', '#2a2a32'];
+    if (f.kind === 'chaise') { px(g, '#1a1018', x - 1, y - 14, 5, 15); px(g, top[0], x, y - 13, 3, 13); px(g, top[1], x, y - 13, 3, 1); }
+    px(g, '#1a1018', x - 1, y - 1, w + 2, 5); px(g, top[0], x, y, w, 3); px(g, top[1], x, y, w, 1);
+    if (f.kind === 'banc') for (let xx = x + 4; xx < x + w - 2; xx += 6) px(g, '#2a6a2a', xx, y, 1, 3);
+    for (const lx of [x + 2, x + w - 5]) { px(g, '#1a1018', lx - 1, y + 3, 5, h - 3); px(g, top[2], lx, y + 3, 3, h - 3); }
+  } else if (f.kind === 'pot' || f.kind === 'tonneau' || f.kind === 'souche') {  // des formes du jardin
+    if (f.kind === 'pot') { for (let yy = y; yy < CB.FLOOR; yy++) { const k = Math.round((yy - y) / Math.max(1, h) * 4); px(g, '#1a1018', x - 1 + k, yy, w + 2 - k * 2, 1); px(g, yy - y < 4 ? '#e8885a' : '#c8643a', x + k, yy, w - k * 2, 1); }
+      px(g, '#4a2a18', x + 1, y, w - 2, 2); px(g, '#ff6a8a', x - 1, y - 3, 3, 3); px(g, '#ffd84a', x + w - 2, y - 3, 3, 3); px(g, '#4aa84a', x + 1, y - 1, 1, 1); }
+    else if (f.kind === 'tonneau') { px(g, '#1a1018', x - 1, y - 1, w + 2, h + 1); px(g, '#9a6a3a', x, y, w, h); px(g, '#7a4a2a', x, y, 2, h); px(g, '#7a4a2a', x + w - 2, y, 2, h); px(g, '#c8945a', x + 2, y, w - 4, 2);
+      for (const yy of [y + 4, y + Math.round(h / 2), CB.FLOOR - 5]) px(g, '#3a3a42', x, yy, w, 2); }
+    else { px(g, '#1a1018', x - 1, y - 1, w + 2, h + 1); px(g, '#6a4a2a', x, y, w, h); for (let xx = x + 3; xx < x + w; xx += 5) px(g, '#4a3018', xx, y + 3, 1, h - 3);
+      px(g, '#d8b878', x, y, w, 3); px(g, '#b89858', x + 3, y + 1, w - 6, 1); px(g, '#4a8a3a', x - 2, CB.FLOOR - 3, 4, 3); }
+  } else if (f.kind === 'muret') {  // un pilier de briques et sa pierre de couronnement
+    px(g, '#1a1018', x - 1, y - 1, w + 2, h + 1); px(g, '#8a8a90', x, y, w, 3); px(g, '#b8b8c0', x, y, w, 1);
+    for (let yy = y + 3, r = 0; yy < CB.FLOOR; yy += 5, r++) { px(g, '#c8b8a8', x, yy, w, 5); for (let xx = x + (r % 2) * 4; xx < x + w; xx += 8) px(g, '#b8503a', xx, yy + 1, Math.min(7, x + w - xx), 3); }
+  } else {  // les blocs pleins : commode, caisse, plan de travail, frigo, armoire, chevet, coffre, lit
+    const K = {commode: ['#8a5a3a', '#b87a4a', '#5a3a22'], caisse: ['#b8884a', '#d8a868', '#7a5a2a'], plan: ['#e8e0d0', '#ffffff', '#b8b0a0'], frigo: ['#e8eef4', '#ffffff', '#a8b4c0'],
+      armoire: ['#7a4a2a', '#a86a3a', '#4a2a18'], chevet: ['#c89a6a', '#e8c08a', '#8a6a4a'], coffre: ['#c83a3a', '#e86a5a', '#8a1a1a'], lit: ['#8a5a3a', '#b87a4a', '#5a3a22']}, wood = K[f.kind] || K.commode;
     px(g, '#1a1018', x - 1, y - 1, w + 2, h + 1); px(g, wood[0], x, y, w, h); px(g, wood[1], x, y, w, 1);
-    for (let yy = y + 6; yy < CB.FLOOR - 2; yy += 9) { px(g, wood[2], x + 2, yy, w - 4, 1); if (f.kind === 'commode') px(g, '#ffd84a', x + Math.floor(w / 2) - 1, yy + 4, 2, 1); }
+    if (f.kind === 'plan') { px(g, '#8a8a98', x - 1, y, w + 2, 3); px(g, '#c8c8d8', x - 1, y, w + 2, 1); for (let xx = x + 2; xx + 10 <= x + w; xx += 12) { px(g, wood[2], xx, y + 5, 10, h - 7); px(g, wood[0], xx + 1, y + 6, 8, h - 9); px(g, '#5a5a68', xx + 7, y + 8, 1, 4); } }
+    else if (f.kind === 'frigo') { px(g, wood[2], x, y + Math.round(h * .35), w, 1); px(g, '#8a94a0', x + w - 4, y + 3, 1, Math.round(h * .3) - 4); px(g, '#8a94a0', x + w - 4, y + Math.round(h * .35) + 3, 1, 8); px(g, '#ff6a6a', x + 3, y + 4, 3, 3); }
+    else if (f.kind === 'armoire') { px(g, wood[2], x + Math.floor(w / 2), y + 2, 1, h - 4); px(g, '#ffd84a', x + Math.floor(w / 2) - 3, y + Math.round(h / 2), 2, 2); px(g, '#ffd84a', x + Math.floor(w / 2) + 2, y + Math.round(h / 2), 2, 2); }
+    else if (f.kind === 'coffre') { px(g, '#ffd84a', x, y + 4, w, 2); px(g, '#ffd84a', x + Math.floor(w / 2) - 1, y + 4, 3, 5); px(g, wood[2], x, y + 3, w, 1); }
+    else if (f.kind === 'lit') { px(g, '#f0f0f8', x, y, w, 3); px(g, '#5a8ad8', x + 9, y, w - 9, 4); px(g, '#8ab0f0', x + 9, y, w - 9, 1); px(g, '#ffffff', x + 1, y - 2, 7, 3); px(g, '#1a1018', x + 1, y - 3, 7, 1);
+      px(g, wood[2], x, y + 5, w, 1); for (const lx of [x, x + w - 3]) px(g, wood[2], lx, y + 5, 3, h - 5); }
+    else for (let yy = y + 6; yy < CB.FLOOR - 2; yy += 9) { px(g, wood[2], x + 2, yy, w - 4, 1); if (f.kind === 'commode' || f.kind === 'chevet') px(g, '#ffd84a', x + Math.floor(w / 2) - 1, yy + 4, 2, 1); }
     if (f.kind === 'caisse') { px(g, wood[2], x + 1, y + 1, 1, h - 2); px(g, wood[2], x + w - 2, y + 1, 1, h - 2); }
   }
   if (f.n && f.n % 10 === 0) pxFont(g, String(f.n), x + w / 2, y - 4, '#ffd84a', 8, 'center');
 }
 // le salon : papier peint à rayures, plinthe, parquet ; une fenêtre et un cadre qui défilent plus lentement
-const CB_WALL = (() => { const c = el('canvas'); c.width = 64; c.height = CB.FLOOR; const g = c.getContext('2d');
+const CB_WALL0 = (() => { const c = el('canvas'); c.width = 64; c.height = CB.FLOOR; const g = c.getContext('2d');
   px(g, '#4a3a5a', 0, 0, 64, CB.FLOOR); for (let x = 0; x < 64; x += 8) { px(g, '#54446a', x, 0, 3, CB.FLOOR); for (let y = 4; y < CB.FLOOR; y += 12) px(g, '#6a5a82', x + 1, y, 1, 1); }
   px(g, '#2a1e30', 0, CB.FLOOR - 7, 64, 1); px(g, '#e8e0d8', 0, CB.FLOOR - 6, 64, 6); px(g, '#b8b0a8', 0, CB.FLOOR - 1, 64, 1); return c; })();
 const CB_DECOR = (() => { const c = el('canvas'); c.width = 240; c.height = 70; const g = c.getContext('2d');
   px(g, '#1a1018', 20, 10, 44, 50); px(g, '#2a3a6a', 22, 12, 40, 46); px(g, '#e8e0d8', 41, 12, 2, 46); px(g, '#e8e0d8', 22, 33, 40, 2); px(g, '#f0e8d8', 28, 18, 2, 2); px(g, '#f0e8d8', 52, 42, 1, 1); px(g, '#ffd84a', 50, 18, 4, 4);
   px(g, '#1a1018', 140, 20, 34, 26); px(g, '#c8a03a', 141, 21, 32, 24); px(g, '#4a8a5a', 144, 24, 26, 18); px(g, '#7ac87a', 150, 30, 8, 6); px(g, '#3a6ac8', 144, 36, 26, 6);
   return c; })();
+const cbTile = (w, h, fn) => { const c = el('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); fn(g); return c; };
+const CB_WALLS = [CB_WALL0,
+  cbTile(64, CB.FLOOR, g => {  // la cuisine : carrelage blanc, une frise bleue
+    px(g, '#b8b8b0', 0, 0, 64, CB.FLOOR); for (let y = 0; y < CB.FLOOR; y += 8) for (let x = 0; x < 64; x += 8) { px(g, '#e8e8e0', x + 1, y + 1, 7, 7); px(g, '#f8f8f0', x + 1, y + 1, 7, 1); }
+    for (let x = 0; x < 64; x += 8) { px(g, '#3a6ac8', x + 1, 57, 7, 7); px(g, '#8ab0f0', x + 3, 59, 3, 3); }
+    px(g, '#2a1e30', 0, CB.FLOOR - 7, 64, 1); px(g, '#d8d0c8', 0, CB.FLOOR - 6, 64, 6); }),
+  cbTile(64, CB.FLOOR, g => {  // la chambre : papier peint rose à petites étoiles
+    px(g, '#a86a8a', 0, 0, 64, CB.FLOOR); for (let y = 6; y < CB.FLOOR; y += 16) for (let x = (y / 16 % 2) * 8 + 4; x < 64; x += 16) { px(g, '#d8a0c0', x, y - 1, 1, 3); px(g, '#d8a0c0', x - 1, y, 3, 1); }
+    px(g, '#2a1e30', 0, CB.FLOOR - 7, 64, 1); px(g, '#f0e0e8', 0, CB.FLOOR - 6, 64, 6); px(g, '#c8b0b8', 0, CB.FLOOR - 1, 64, 1); }),
+  cbTile(64, CB.FLOOR, g => {  // le jardin : le ciel, la haie, la palissade
+    const sky = ['#5aa8e8', '#6ab4ec', '#7ac0f0', '#8acaf2', '#9ad4f4', '#aadcf6']; for (let y = 0; y < CB.FLOOR; y++) px(g, sky[Math.min(5, Math.floor(y / 18))], 0, y, 64, 1);
+    for (let x = 0; x < 64; x += 2) { const t = 92 + Math.round(Math.sin(x / 5) * 3 + Math.sin(x / 2.3)); px(g, '#2a6a3a', x, t, 2, CB.FLOOR - t); px(g, '#4a9a4a', x, t, 2, 1); }
+    for (let x = 2; x < 64; x += 8) { px(g, '#1a1018', x - 1, 108, 7, 32); px(g, '#e8d8b8', x, 110, 5, 30); px(g, '#e8d8b8', x + 1, 107, 3, 3); px(g, '#c8b898', x + 4, 110, 1, 30); }
+    px(g, '#1a1018', 0, 116, 64, 4); px(g, '#d8c8a8', 0, 117, 64, 2); })];
+const CB_DECORS = [CB_DECOR,
+  cbTile(240, 70, g => {  // la cuisine : une horloge, une étagère de pots
+    px(g, '#1a1018', 30, 8, 22, 22); px(g, '#ffffff', 31, 9, 20, 20); px(g, '#1a1018', 40, 12, 2, 8); px(g, '#1a1018', 41, 18, 6, 2); px(g, '#e83a4a', 31, 9, 20, 1);
+    px(g, '#1a1018', 120, 40, 70, 4); px(g, '#8a5a3a', 120, 40, 70, 3); [[124, '#e8a03a'], [140, '#5ab84a'], [156, '#e83a4a'], [172, '#5a8ad8']].forEach(([x, c]) => { px(g, '#1a1018', x - 1, 27, 12, 13); px(g, c, x, 28, 10, 12); px(g, '#ffffff', x + 2, 31, 6, 4); }); }),
+  cbTile(240, 70, g => {  // la chambre : une fenêtre de nuit à rideaux, un poster
+    px(g, '#1a1018', 20, 8, 46, 48); px(g, '#1a2a5a', 22, 10, 42, 44); px(g, '#fff4c0', 50, 16, 6, 6); px(g, '#1a2a5a', 52, 15, 5, 5); for (const [sx, sy] of [[28, 20], [36, 40], [56, 44], [30, 34]]) px(g, '#ffffff', sx, sy, 1, 1);
+    px(g, '#e85a8a', 16, 6, 8, 52); px(g, '#e85a8a', 62, 6, 8, 52); px(g, '#ff8ab0', 17, 6, 2, 52); px(g, '#ff8ab0', 63, 6, 2, 52);
+    px(g, '#1a1018', 140, 14, 30, 38); px(g, '#ffd84a', 141, 15, 28, 36); px(g, '#e83a4a', 146, 22, 18, 18); px(g, '#ffffff', 151, 27, 8, 8); }),
+  cbTile(240, 70, g => {  // le jardin : le soleil, des nuages
+    for (let y = -8; y <= 8; y++) for (let x = -8; x <= 8; x++) if (x * x + y * y <= 64) px(g, x * x + y * y > 49 ? '#ffc84a' : '#fff07a', 40 + x, 14 + y);
+    for (const [cx, cy] of [[110, 12], [190, 24]]) { px(g, '#ffffff', cx, cy, 26, 6); px(g, '#ffffff', cx + 5, cy - 4, 12, 4); px(g, '#d8e8f8', cx, cy + 5, 26, 1); } })];
 function cbBeep(f, d, type = 'square', slide = 0, vol = .04) { if (cbMute) return; try { cbac ??= new AudioContext(); const o = cbac.createOscillator(), g = cbac.createGain(), t = cbac.currentTime; o.type = type; o.frequency.setValueAtTime(f, t); if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + d); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + d); o.connect(g).connect(cbac.destination); o.start(t); o.stop(t + d); } catch {} }
 // une nouvelle partie garde le même objet : la boucle du jeu (gameLoop) continue de tourner dessus
 const renew = (old, o) => { if (!old) return o; for (const k of Object.keys(old)) if (k !== 'raf') delete old[k]; return Object.assign(old, o); };
 function cbNew() {
   const g = cb?.g;
-  cb = renew(cb, {g, mode: 'ready', tick: 0, seen: 0, furn: [{x: 10, y: 100, w: 30, kind: 'table', n: 0}], at: 0, score: 0, flips: 0, perfect: 0, streak: 0, charge: 0, hold: false, cam: 0, dead: 0, record: false, rnd: seeded(Date.now() % 1e9), pop: null, drops: []});
+  cb = renew(cb, {g, mode: 'ready', tick: 0, seen: 0, furn: [{x: 10, y: 100, w: 30, kind: 'table', n: 0}], at: 0, score: 0, flips: 0, perfect: 0, streak: 0, charge: 0, hold: false, cam: 0, dead: 0, record: false, rnd: seeded(Date.now() % 1e9), pop: null, drops: [], lives: CB.LIVES, respawn: 0, slow: 0, sk: 0, near: false, stars: [], flash: 0, room: 0});
   cbGen(8); cbPlace(); cbInfo();
 }
 function cbGen(n) {
   while (cb.furn.length < n) {
     const p = cb.furn[cb.furn.length - 1], k = cb.furn.length, r = cb.rnd, d = Math.min(1, k / 40);
-    const w = Math.round(32 - d * 8 + r() * 10), gap = Math.round(16 + r() * (22 + d * 30)), y = Math.round(Math.max(56, Math.min(124, p.y + (r() - .5) * (40 + d * 30))));
-    cb.furn.push({x: p.x + p.w + gap, y, w, kind: CB_KINDS[Math.floor(r() * CB_KINDS.length)], n: k});
+    const w = Math.round(32 - d * 6 + r() * 10), gap = Math.round(14 + r() * (18 + d * 24)), y = Math.round(Math.max(60, Math.min(124, p.y + (r() - .5) * (34 + d * 26))));  // un peu plus proches et moins de dénivelé qu'avant
+    const R = CB_ROOMS[cbRoom(k)], list = y < 80 ? R.tall : y > 108 ? R.low : R.mid;
+    cb.furn.push({x: p.x + p.w + gap, y, w, kind: list[Math.floor(r() * list.length)], n: k});
   }
 }
 const cbPlace = () => { const f = cb.furn[cb.at]; Object.assign(cb, {x: f.x + Math.min(10, f.w / 2), y: f.y - 8, vx: 0, vy: 0, a: 0, w: 0, fly: false}); };
@@ -382,11 +441,14 @@ function cbStep(b, tuck, furn) {
   const prevBottom = b.y + 8;
   b.vy += CB.G; b.x += b.vx; b.y += b.vy; b.a += tuck ? CB.TUCK : CB.SPIN;
   const bx = b.x, bottom = b.y + 8;
-  if (b.vy > 0) for (let i = 0; i < furn.length; i++) { const f = furn[i]; if (prevBottom <= f.y && bottom >= f.y && bx >= f.x - 1 && bx <= f.x + f.w + 1) { b.y = f.y - 8; return {land: i}; } }
+  if (b.vy > 0) for (let i = 0; i < furn.length; i++) { const f = furn[i]; if (prevBottom <= f.y && bottom >= f.y && bx >= f.x - 3 && bx <= f.x + f.w + 3) { b.y = f.y - 8; return {land: i}; } }
   if (bottom >= CB.FLOOR) return {floor: true};
   return null;
 }
 const cbAngle = a => { a %= Math.PI * 2; if (a > Math.PI) a -= Math.PI * 2; return a; };
+// où la bouteille va retomber si on ne maintient plus : le meuble, l'endroit, l'angle (null si rien dans les max pas)
+function cbPredict(src, max = 200) { const b = {x: src.x, y: src.y, vx: src.vx, vy: src.vy, a: src.a}, pts = [];
+  for (let t = 0; t < max; t++) { const r = cbStep(b, false, cb.furn); if (t % 3 === 2) pts.push([b.x, b.y + 8]); if (r) return {land: r.land, floor: r.floor, x: b.x, y: b.y, a: b.a, pts}; } return null; }
 const cbLaunch = (b, p) => { b.vx = 1 + p * 2.2; b.vy = -(2 + p * 3.2); b.w = 0; b.fly = true; };
 function cbLanded(i) {
   const a = Math.abs(cbAngle(cb.a));
@@ -396,29 +458,37 @@ function cbLanded(i) {
   cb.streak++; cb.flips++; if (perfect) cb.perfect++;
   cb.score += gain * 10 + Math.min(5, cb.streak) * 2;
   cb.at = i; cb.a = 0; cb.fly = false; cb.vx = cb.vy = 0; cbGen(cb.at + 8);
-  cb.pop = {text: perfect ? 'PARFAIT !' : jump > 1 ? 'SAUT DE ' + jump : 'DEBOUT !', t: 50};
+  cb.pop = {text: perfect ? 'PARFAIT !' : jump > 1 ? 'SAUT DE ' + jump : 'DEBOUT !', t: perfect ? 70 : 50, big: perfect};
+  if (perfect) { cb.slow = 40; cb.flash = 8; for (let k = 0; k < 16; k++) { const an = k / 16 * Math.PI * 2; cb.stars.push({x: cb.x, y: cb.y + 6, vx: Math.cos(an) * 1.6, vy: Math.sin(an) * 1.6 - .6, t: 34}); } }
+  if (cbRoom(cb.at) !== cb.room) { cb.room = cbRoom(cb.at); setTimeout(() => { if (cb.mode === 'play') cb.pop = {text: CB_ROOMS[cb.room].name, t: 70, room: true}; }, perfect ? 900 : 500); }
   cbBeep(perfect ? 990 : 660, .08); if (!cbMute) setTimeout(() => cbBeep(perfect ? 1320 : 880, .12), 80);
 }
 function cbFail(how) {
   if (how === 'pareil') { cb.a = 0; cb.fly = false; cb.vx = cb.vy = 0; cbPlace(); cb.streak = 0; cbBeep(300, .06); return; }
-  cb.mode = 'over'; cb.dead = 0; cb.how = how; cb.fly = false;
   for (let i = 0; i < 12; i++) cb.drops.push({x: cb.x, y: cb.y + 4, vx: (cb.rnd() - .5) * 2, vy: -cb.rnd() * 2, t: 40});
+  cb.how = how; cb.fly = false; cb.hold = false; cb.near = false;
+  if (--cb.lives > 0) { cb.respawn = 60; cb.streak = 0; cb.pop = {text: 'OUPS ! ENCORE ' + cb.lives, t: 60}; cbBeep(220, .3, 'sawtooth', 90, .05); return; }
+  cb.mode = 'over'; cb.dead = 0;
   cbs.games++; cbs.flips += cb.flips; cbs.perfect += cb.perfect; cb.record = best('culbute', cb.score); saveGames(); cbInfo();
   cbBeep(180, .5, 'sawtooth', 50, .06);
 }
 function cbUpdate() {
   for (const d of cb.drops) { d.x += d.vx; d.y += d.vy; d.vy += .15; if (d.y > CB.FLOOR) { d.y = CB.FLOOR; d.vy = 0; d.vx *= .6; } d.t--; } cb.drops = cb.drops.filter(d => d.t > 0);
   if (cb.pop && --cb.pop.t <= 0) cb.pop = null;
+  for (const st of cb.stars) { st.x += st.vx; st.y += st.vy; st.vy += .05; st.t--; } cb.stars = cb.stars.filter(st => st.t > 0); if (cb.flash) cb.flash--;
   if (cb.mode === 'over') { cb.dead++; if (cb.dead < 30 && cb.how === 'renversée') { cb.a += .2; cb.y = Math.min(cb.y + 2, CB.FLOOR - 4); } return; }
   if (cb.mode !== 'play') return;
+  if (cb.respawn) { if (cb.respawn > 30 && cb.how === 'renversée') { cb.a += .2; cb.y = Math.min(cb.y + 2, CB.FLOOR - 4); } if (--cb.respawn === 0) cbPlace(); return; }
+  if (cb.slow > 0 || cb.near) { if (cb.slow > 0) cb.slow--; if (++cb.sk % 2) return; }  // le ralenti : à l'approche d'une bonne réception, et après un PARFAIT
   if (!cb.fly) { if (cb.hold) cb.charge = Math.min(1, cb.charge + 1 / CB.CHARGE); }
-  else { const r = cbStep(cb, cb.hold, cb.furn); if (r?.land !== undefined) cbLanded(r.land); else if (r?.floor) cbFail('tombée'); }
+  else { const r = cbStep(cb, cb.hold, cb.furn); if (r?.land !== undefined) { cb.near = false; cbLanded(r.land); } else if (r?.floor) { cb.near = false; cbFail('tombée'); } else { const p = cbPredict(cb, 12); cb.near = !!p && p.land > cb.at && Math.abs(cbAngle(p.a)) < CB.OK; } }
   // la caméra garde la bouteille au premier tiers
   cb.cam += (Math.max(0, cb.x - 50) - cb.cam) * .08;
 }
 function cbPress() {
   if (cb.mode === 'ready' || cb.mode === 'pause') cb.mode = 'play';
   if (cb.mode === 'over') { if (cb.dead > 60) { cbNew(); cb.mode = 'play'; } return; }
+  if (cb.respawn) return;
   cb.hold = true; if (!cb.fly) cb.charge = 0;
 }
 function cbRelease() {
@@ -429,23 +499,50 @@ function cbDraw() {
   const g = cb.g, {W, H, HUD, FLOOR} = CB, ox = Math.round(cb.cam);
   for (; cb.seen < cb.tick; cb.seen++) if (cb.mode !== 'play') cbUpdate();
   g.imageSmoothingEnabled = false;
-  const wo = ((-ox % 64) + 64) % 64; for (let x = wo - 64; x < W; x += 64) g.drawImage(CB_WALL, x, 0);
-  const dofs = ((-Math.round(ox * .5) % 240) + 240) % 240; for (let x = dofs - 240; x < W; x += 240) g.drawImage(CB_DECOR, x, 26);
-  // le parquet
-  px(g, '#6a4028', 0, FLOOR, W, H - FLOOR); for (let x = ((-ox % 16) + 16) % 16 - 16; x < W; x += 16) { px(g, '#4a2a18', x, FLOOR, 1, H - FLOOR); px(g, '#8a5a38', x + 1, FLOOR, 14, 1); }
+  // les pièces : chacune entre deux portes (à mi-chemin du 15e meuble et du précédent), avec son mur, son décor et son sol
+  const bounds = [-1e9]; for (let n = 15; n < cb.furn.length; n += 15) bounds.push((cb.furn[n - 1].x + cb.furn[n - 1].w + cb.furn[n].x) / 2); bounds.push(1e9);
+  for (let k = 0; k < bounds.length - 1; k++) {
+    const x0 = Math.max(0, Math.round(bounds[k] - ox)), x1 = Math.min(W, Math.round(bounds[k + 1] - ox)); if (x1 <= x0) continue;
+    const room = k % CB_ROOMS.length; g.save(); g.beginPath(); g.rect(x0, 0, x1 - x0, H); g.clip();
+    const wo = ((-ox % 64) + 64) % 64; for (let x = wo - 64; x < W; x += 64) g.drawImage(CB_WALLS[room], x, 0);
+    const dofs = ((-Math.round(ox * .5) % 240) + 240) % 240; for (let x = dofs - 240; x < W; x += 240) g.drawImage(CB_DECORS[room], x, 26);
+    if (room === 1) { for (let x = ((-ox % 8) + 8) % 8 - 8, i = Math.floor(ox / 8); x < W; x += 8, i++) for (let y = FLOOR; y < H; y += 5) px(g, (i + (y - FLOOR) / 5) % 2 ? '#e8e8e0' : '#2a2a32', x, y, 8, 5); }  // le carrelage
+    else if (room === 3) { px(g, '#4a9a3a', 0, FLOOR, W, H - FLOOR); px(g, '#7ac85a', 0, FLOOR, W, 1); for (let x = ((-ox % 7) + 7) % 7 - 7; x < W; x += 7) px(g, '#3a7a2a', x + 3, FLOOR + 3, 1, 2); }  // l'herbe
+    else { px(g, room === 2 ? '#8a5a48' : '#6a4028', 0, FLOOR, W, H - FLOOR); for (let x = ((-ox % 16) + 16) % 16 - 16; x < W; x += 16) { px(g, '#4a2a18', x, FLOOR, 1, H - FLOOR); px(g, room === 2 ? '#aa7a68' : '#8a5a38', x + 1, FLOOR, 14, 1); } }  // le parquet
+    g.restore();
+    if (k > 0 && x0 > 0) { px(g, '#1a1018', x0 - 3, 14, 6, FLOOR - 14); px(g, '#e8e0d8', x0 - 2, 15, 4, FLOOR - 15); px(g, '#b8b0a8', x0 + 1, 15, 1, FLOOR - 15); }  // l'encadrement de la porte
+  }
   for (const f of cb.furn) cbFurniture(g, f, ox);
   // la trajectoire pendant la charge, jusqu'à l'atterrissage (sans la rotation : à toi de choisir quand maintenir)
-  if (cb.mode === 'play' && !cb.fly && cb.hold) { const b = {x: cb.x, y: cb.y, a: 0}; cbLaunch(b, .15 + cb.charge * .85); for (let i = 0; i < 120; i++) { const r = cbStep(b, false, cb.furn.slice(cb.at + 1)); if (i % 3 === 2 || r) px(g, r ? '#ffd84a' : '#ffffff', Math.round(b.x - ox) - (r ? 1 : 0), Math.round(b.y + 8), r ? 3 : 1, 1); if (r) break; } }
+  // la prédiction : pendant la charge, tout le saut ; en vol, la suite si on lâche maintenant. Le meuble visé s'éclaire, une flèche marque
+  // l'endroit, et le fantôme de la bouteille montre dans quel sens elle arrivera : vert = debout, rouge = il faut tourner plus (maintenir)
+  if (cb.mode === 'play' && !cb.respawn && (cb.fly || cb.hold)) {
+    const src = cb.fly ? cb : (() => { const b = {x: cb.x, y: cb.y, a: 0}; cbLaunch(b, .15 + cb.charge * .85); return b; })(), p = cbPredict(src);
+    if (p) {
+      if (!cb.fly) for (const [x, y] of p.pts) { px(g, '#1a1018', Math.round(x - ox) - 1, Math.round(y) - 1, 3, 3); px(g, '#ffffff', Math.round(x - ox), Math.round(y), 1, 1); }
+      const ok = p.land > cb.at && Math.abs(cbAngle(p.a)) < CB.OK, col = p.floor || p.land <= cb.at ? '#ff4a4a' : ok ? '#7ee07a' : '#ff8a3a', lx = Math.round(p.x - ox);
+      if (p.land !== undefined && p.land !== cb.at) { const f = cb.furn[p.land]; px(g, col, Math.round(f.x - ox) - 1, Math.round(f.y) - 2, f.w + 2, 1); }
+      const bob = (cb.tick >> 3) % 2; px(g, '#1a1018', lx - 3, Math.round(p.y) - 19 - bob, 7, 1); px(g, col, lx - 2, Math.round(p.y) - 19 - bob, 5, 1); px(g, col, lx - 1, Math.round(p.y) - 18 - bob, 3, 1); px(g, col, lx, Math.round(p.y) - 17 - bob, 1, 1);  // la flèche
+      const gf = ((Math.round(cbAngle(p.a) / (Math.PI * 2) * 32) % 32) + 32) % 32; g.globalAlpha = .45; g.drawImage(CB_ROT[gf], lx - 10, Math.round(p.y) - 10); g.globalAlpha = 1;
+      if (cb.fly && !ok && !p.floor && p.land > cb.at && !cb.hold && (cb.tick >> 2) % 2) pxFont(g, 'MAINTIENS !', W / 2, CB.HUD + 38, '#ff8a3a', 8, 'center');
+    }
+  }
   for (const d of cb.drops) px(g, '#7ac8f0', d.x - ox, d.y, 2, 1);
   const fr = ((Math.round(cbAngle(cb.a) / (Math.PI * 2) * 32) % 32) + 32) % 32;
   g.drawImage(CB_ROT[fr], Math.round(cb.x - ox) - 10, Math.round(cb.y) - 10 + (cb.hold && !cb.fly ? Math.round(cb.charge * 2) : 0));
   // la jauge de charge à côté de la bouteille
   if (cb.mode === 'play' && !cb.fly && cb.hold) { const n = Math.round(cb.charge * 10), bx = Math.round(cb.x - ox) + 8, by = Math.round(cb.y) - 10; px(g, '#1a1018', bx, by - 1, 4, 22); for (let i = 0; i < 10; i++) px(g, i < n ? (i < 4 ? '#7ee07a' : i < 8 ? '#ffd84a' : '#ff8a3a') : '#3a2a32', bx + 1, by + 19 - i * 2, 2, 1); }
-  if (cb.pop) pxFont(g, cb.pop.text, W / 2, HUD + 24 - Math.round((50 - cb.pop.t) / 8), '#ffd84a', 8, 'center');
+  for (const st of cb.stars) px(g, st.t > 20 ? '#ffffff' : '#ffd84a', st.x - ox, st.y, st.t > 12 ? 2 : 1, st.t > 12 ? 2 : 1);
+  if (cb.flash) { g.globalAlpha = cb.flash / 16; px(g, '#ffffff', 0, 0, W, H); g.globalAlpha = 1; }
+  if (cb.pop?.big) { const age = 70 - cb.pop.t, sz = age < 6 ? 10 + age : age < 10 ? 16 - (age - 6) : 12;  // PARFAIT ! : grossit, rebondit, clignote or et blanc
+    gameText(g, W, [[cb.pop.text, (cb.tick >> 2) % 2 ? '#ffd84a' : '#ffffff', sz]], HUD + 30); }
+  else if (cb.pop?.room) gameText(g, W, [[cb.pop.text, '#c8e8ff', 10]], HUD + 30);
+  else if (cb.pop) pxFont(g, cb.pop.text, W / 2, HUD + 24 - Math.round((50 - Math.min(50, cb.pop.t)) / 8), '#ffd84a', 8, 'center');
   px(g, '#140e18', 0, 0, W, HUD);
   pxFont(g, String(cb.score), 4, 9, '#ffffff', 8); pxFont(g, 'Meuble ' + cb.at, W / 2, 9, '#c8b0d8', 8, 'center');
+  for (let i = 0; i < CB.LIVES; i++) { const lx = W - 46 + i * 6; px(g, '#1a1018', lx, 2, 5, 9); px(g, i < cb.lives ? '#7ac8f0' : '#3a2a3a', lx + 1, 4, 3, 6); px(g, i < cb.lives ? '#3a7ad8' : '#3a2a3a', lx + 2, 2, 1, 2); }  // les bouteilles qui restent
   if (cb.streak > 1) pxFont(g, '×' + Math.min(5, cb.streak), W - 4, 9, '#ffd84a', 8, 'right');
-  if (cb.mode === 'ready') gameText(g, W, [['CULBUTE', '#7ac8f0', 16], ['Maintiens, lâche : saut', '#ffffff'], ['Maintiens en l\'air :', '#ffffff'], ['elle tourne plus vite', '#ffffff'], ['Pose-la debout !', '#b8b0c8'], ['Record ' + (games.best.culbute || 0), '#ffd84a']], 46);
+  if (cb.mode === 'ready') gameText(g, W, [['CULBUTE', '#7ac8f0', 16], ['Maintiens, lâche : saut', '#ffffff'], ['Maintiens en l\'air :', '#ffffff'], ['elle tourne plus vite', '#ffffff'], ['Pose-la debout !', '#b8b0c8'], ['Fantôme vert = debout', '#7ee07a'], ['Record ' + (games.best.culbute || 0), '#ffd84a']], 46);
   if (cb.mode === 'pause') gameText(g, W, [['PAUSE', '#ffffff', 12], ['Espace : reprendre', '#b8b0c8']], 70);
   if (cb.mode === 'over' && cb.dead > 40) gameText(g, W, [[cb.how === 'tombée' ? 'PAR TERRE !' : 'RENVERSÉE !', '#ff8a3a', 12], [cb.score + ' points · ' + cb.flips + (cb.flips > 1 ? ' culbutes' : ' culbute'), '#ffffff'], [cb.record ? 'NOUVEAU RECORD !' : 'Record ' + (games.best.culbute || 0), '#ffd84a'], [cb.dead > 60 ? 'Espace : recommencer' : '', '#b8b0c8']], 58);
   if (cb.tick % 30 === 0) g.canvas.setAttribute('aria-label', 'Culbute : ' + (cb.mode === 'play' ? cb.score + ' points, meuble ' + cb.at + ', ' + cb.flips + ' culbutes' : cb.mode === 'over' ? 'partie finie, ' + cb.score + ' points' : cb.mode === 'pause' ? 'pause' : 'prêt'));
@@ -463,7 +560,20 @@ document.addEventListener('keyup', e => { if (cb && CB_KEYS.includes(e.key)) cbR
 $('cbCanvas').onpointerdown = e => { e.preventDefault(); if (cb) cbPress(); };
 document.addEventListener('pointerup', () => { if (cb) cbRelease(); });
 $('cbNew').onclick = () => { cbNew(); $('cbNew').blur(); };
-{  // vérification : depuis chaque meuble, il existe une charge et une durée de rotation rapide qui posent la bouteille debout sur le suivant
+$('cbFs').onclick = () => { $('cbFs').blur(); try { if (document.fullscreenElement) document.exitFullscreen(); else $('cbCanvas').parentElement.requestFullscreen?.().catch(() => {}); } catch {} };
+{  // la manette : A, B, RB, RT ou croix haut maintenu = charger puis tourner ; Start = pause / reprendre
+  const HOLD = [0, 1, 5, 7, 12]; let prev = [];
+  const loop = () => {
+    requestAnimationFrame(loop);
+    const p = [...(navigator.getGamepads?.() || [])].find(Boolean);
+    if (!p || !cb || !view.classList.contains('on')) { prev = []; return; }
+    const now = p.buttons.map(b => b.pressed), held = HOLD.some(i => now[i]), was = HOLD.some(i => prev[i]), start = now[9] && !prev[9]; prev = now;
+    if (held && !was) cbPress(); else if (!held && was) cbRelease();
+    if (start) { if (cb.mode === 'play' && !cb.fly) { cb.mode = 'pause'; cb.hold = false; } else if (cb.mode !== 'play') { cbPress(); cbRelease(); } }
+  };
+  requestAnimationFrame(loop);
+}
+function cbCheck() {  // vérification : depuis chaque meuble, il existe une charge et une durée de rotation rapide qui posent la bouteille debout sur le suivant ; pièces, vies
   const keep = cb; cb = null; cbMute = true; cbNew(); cbGen(40);
   let reach = 0, total = 0;
   for (let i = 0; i < 12; i++) {  // les 12 premiers suffisent au démarrage (la simulation complète a été faite sur 5 parties de 40 meubles)
@@ -474,9 +584,15 @@ $('cbNew').onclick = () => { cbNew(); $('cbNew').blur(); };
     }
     if (ok) reach++;
   }
-  console.assert(reach === total, 'culbute', {reach, total});
+  const bad = []; if (reach !== total) bad.push('meubles atteignables ' + reach + '/' + total);
+  if (!(cbRoom(0) === 0 && cbRoom(15) === 1 && cbRoom(30) === 2 && cbRoom(45) === 3 && cbRoom(60) === 0)) bad.push('pièces');
+  if (!cb.furn.slice(15, 30).every(f => [...CB_ROOMS[1].tall, ...CB_ROOMS[1].mid, ...CB_ROOMS[1].low].includes(f.kind))) bad.push('meubles de la cuisine');
+  cb.mode = 'play'; cb.fly = true; cbFail('tombée'); if (cb.mode !== 'play' || cb.lives !== CB.LIVES - 1 || !cb.respawn) bad.push('une vie perdue');
   cb = keep; cbMute = false;
+  return bad.length ? bad.join(', ') : 'ok';
 }
+{ const c = cbCheck(); console.assert(c === 'ok', 'culbute', c); }
+$('cbCanvas').__cb = {st: () => cb, CB, check: cbCheck, predict: cbPredict, room: cbRoom};
 ctx.onOpen(() => {
   if (!cb || !cb.g) { cbNew(); cb.g = $('cbCanvas').getContext('2d'); }
   gameLoop(cb, 'culbute', cbUpdate, cbDraw); cbInfo();
