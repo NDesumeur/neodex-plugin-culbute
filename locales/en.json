@@ -109,5 +109,8 @@
  "banc": "bench",
  "tonneau": "barrel",
  "pot": "pot",
- "souche": "stump"
+ "souche": "stump",
+ "pièces": "coins",
+ "meubles de la cuisine": "kitchen furniture",
+ "une vie perdue": "a life lost"
 }
