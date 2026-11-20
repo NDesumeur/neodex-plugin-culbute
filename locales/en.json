@@ -64,7 +64,6 @@
  "RECORDS": "RECORDS",
  "RENVERSÉE !": "TIPPED OVER!",
  "Record": "Best",
- "Record.": "Best score.",
  "SAUT DE": "JUMP OF",
  "Ua": "Ua",
  "Uc": "Uc",
@@ -112,5 +111,6 @@
  "souche": "stump",
  "pièces": "coins",
  "meubles de la cuisine": "kitchen furniture",
- "une vie perdue": "a life lost"
+ "une vie perdue": "a life lost",
+ "Rien n'est synchronisé : tes records restent sur cet appareil.": "Nothing is synced: your records stay on this device."
 }
