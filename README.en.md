@@ -4,6 +4,14 @@ A pixel art skill game: a water bottle jumps from furniture to furniture, from t
 
 *Version française : [README.md](README.md)*
 
+
+## Easy mode, objects and tricks (new in 1.2.0)
+
+- **Easy mode** (the default): a single move. Hold to aim, release to jump, and the spin adjusts itself so the object lands upright. Five tries, furniture closer together, its own record. **Expert mode** keeps the old way to play.
+- **Four objects**, each with its own physics: the bottle, the can (spins fast, also stands upside down), the book (slow, lands on either face) and the phone (fast and demanding). They unlock with flips (15, 40, 80).
+- **Scored tricks**: two full turns in the air is a DOUBLE (points ×2); three, a TRIPLE (×3).
+- **Starting room**: a room reached once (kitchen, bedroom, garden) can be used as the start.
+
 ## Controls
 
 - **Space**, **↑** or **click**: hold to charge the jump, release to throw the bottle.

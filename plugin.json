@@ -1,9 +1,9 @@
 {
   "id": "neodex.culbute",
   "name": "Culbute",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "author": "NDesumeur",
-  "description": "Jeu d'adresse : une bouteille d'eau saute de meuble en meuble, du salon à la cuisine, la chambre et le jardin. Maintiens pour charger le saut, lâche pour la lancer, et maintiens en l'air pour la faire tourner plus vite : elle doit retomber debout. Le fantôme de la bouteille montre où et dans quel sens elle va retomber. Trois bouteilles par partie, culbutes parfaites au ralenti qui comptent double, sauts par-dessus un meuble et séries. Manette et plein écran. Score et record.",
+  "description": "Jeu d'adresse : une bouteille d'eau saute de meuble en meuble, du salon à la cuisine, la chambre et le jardin. Maintiens pour charger le saut, lâche pour la lancer, et maintiens en l'air pour la faire tourner plus vite : elle doit retomber debout. Le fantôme de la bouteille montre où et dans quel sens elle va retomber. Trois bouteilles par partie, culbutes parfaites au ralenti qui comptent double, sauts par-dessus un meuble et séries. Manette et plein écran. Score et record. Un mode facile à un seul geste, quatre objets (bouteille, canette, livre, téléphone), des doubles et des triples.",
   "icon": "icon.png",
   "entry": "index.js",
   "view": "culbute",

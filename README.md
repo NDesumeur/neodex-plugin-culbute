@@ -4,6 +4,14 @@ Un jeu d'adresse en pixel art : une bouteille d'eau saute de meuble en meuble, d
 
 *English version: [README.en.md](README.en.md)*
 
+
+## Mode facile, objets et figures (nouveau en 1.2.0)
+
+- **Mode facile** (réglé par défaut) : un seul geste. Tu maintiens pour viser, tu lâches pour sauter, et la rotation se règle toute seule pour retomber debout. Cinq essais, meubles plus proches, record à part. Le **mode expert** garde l'ancienne façon de jouer.
+- **Quatre objets**, chacun avec sa physique : la bouteille, la canette (tourne vite, tient aussi à l'envers), le livre (lent, retombe sur une face ou l'autre) et le téléphone (rapide et exigeant). Ils se débloquent avec les culbutes (15, 40, 80).
+- **Figures notées** : deux tours complets en l'air, c'est un DOUBLE (points ×2) ; trois, un TRIPLE (×3).
+- **Pièce de départ** : une pièce atteinte une fois (cuisine, chambre, jardin) peut servir de départ.
+
 ## Commandes
 
 - **Espace**, **↑** ou **clic** : maintiens pour charger le saut, lâche pour lancer la bouteille.

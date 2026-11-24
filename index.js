@@ -1,17 +1,20 @@
 // Culbute : une bouteille saute de meuble en meuble en faisant des tours sur elle-même, et doit se poser debout.
 // Jeu NeoDex en pixel art dessiné à la main (police bitmap, cadres et boutons en pixels). Il tourne dans le bac à sable de NeoDex.
 const HTML = `<div class="appWrap wide">
-  <div class="agHead"><span class="label">Culbute</span><span class="hint">Maintiens Espace (ou le clic) pour charger, lâche pour sauter · maintiens en l'air pour tourner plus vite · P : pause</span></div>
+  <div class="agHead"><span class="label">Culbute</span><span class="hint">Maintiens Espace (ou le clic) pour charger, lâche pour sauter · en mode expert, maintiens en l'air pour tourner plus vite · P : pause</span></div>
   <div class="gMain"><div class="gameBox"><canvas id="cbCanvas" width="160" height="150" role="img" aria-label="Culbute"></canvas></div>
     <div class="gSide">
       <div class="sysCard"><b>RECORDS</b><div class="gStats" id="cbStats"></div></div>
       <div class="row"><button class="btn main" id="cbNew">NOUVELLE PARTIE</button><button class="btn" id="cbFs">PLEIN ÉCRAN</button></div>
+      <div class="sysCard"><b>RÉGLAGES</b><div class="row"><button class="btn" id="cbMode"></button></div><div class="hint" id="cbModeHint"></div>
+        <div class="hint">Objet :</div><div class="cbOpts" id="cbObjs"></div><div class="hint">Pièce de départ :</div><div class="cbOpts" id="cbRooms"></div></div>
       <div class="hint">Le fantôme de la bouteille montre où elle va retomber et dans quel sens : vert, elle se posera debout ; orange, maintiens pour la faire tourner plus vite ; rouge, elle tombe à côté. Trois bouteilles par partie.</div>
       <div class="hint">Manette : A (ou B, RB, RT, croix haut) maintenu pour charger puis pour tourner, Start pour la pause.</div>
-      <div class="hint">Plus tu maintiens, plus la bouteille saute loin et haut : les points blancs montrent tout le saut, jusqu'au meuble où elle retombe. En l'air, elle tourne toute seule ; maintiens pour qu'elle tourne deux fois plus vite. Elle doit retomber debout sur le dessus d'un meuble, à 46° près ; presque droite, c'est PARFAIT et ça compte double. Sauter par-dessus un meuble rapporte plus. Si elle se renverse ou tombe par terre, tu perds une bouteille et tu repars du même meuble ; si elle retombe sur le même meuble, tu peux réessayer. Tous les 15 meubles, on change de pièce : salon, cuisine, chambre, jardin.</div>
+      <div class="hint">Plus tu maintiens, plus la bouteille saute loin et haut : les points blancs montrent tout le saut, jusqu'au meuble où elle retombe. En l'air, elle tourne toute seule ; maintiens pour qu'elle tourne deux fois plus vite. Elle doit retomber debout sur le dessus d'un meuble, à 46° près ; presque droite, c'est PARFAIT et ça compte double. Sauter par-dessus un meuble rapporte plus. Si elle se renverse ou tombe par terre, tu perds une bouteille et tu repars du même meuble ; si elle retombe sur le même meuble, tu peux réessayer. Tous les 15 meubles, on change de pièce : salon, cuisine, chambre, jardin. Deux tours complets en l'air : DOUBLE (points ×2) ; trois : TRIPLE (×3).</div>
     </div></div>
 </div>`;
-const CSS = `.gMain{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap}
+const CSS = `.cbOpts{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin:4px 0 8px}.cbOpts .btn{padding:6px 4px;font-size:12px}
+.gMain{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap}
 .gameBox{display:grid;place-items:center;padding:10px;background:#05010b;flex:0 0 auto;position:relative}
 .gameBox canvas{height:max(300px,min(calc(100vh - 210px),1050px));width:auto;max-width:calc(100vw - 40px);aspect-ratio:160/150;image-rendering:pixelated;cursor:var(--cp,pointer);touch-action:none}
 .gSide{display:flex;flex-direction:column;gap:14px;flex:1;min-width:250px;max-width:420px}
@@ -325,18 +328,30 @@ const pxFont = (g, text, x, y, color, size = 8, align = 'left') => { const s = P
 /* ---------- Culbute : une bouteille saute de meuble en meuble dans un salon. Maintenir charge le saut, lâcher la lance ;
    maintenir pendant le vol la fait tourner plus vite. Elle doit se poser debout (à 40° près) sur le dessus d'un meuble ---------- */
 const CB = {W: 160, H: 150, HUD: 12, FLOOR: 140, G: .16, SPIN: .11, TUCK: .23, OK: .8, PERFECT: .25, CHARGE: 50, LIVES: 3};  // 46° de marge pour tenir debout, 14° pour PARFAIT
-const cbs = gstore('culbute', {games: 0, flips: 0, perfect: 0});
+const cbs = gstore('culbute', {games: 0, flips: 0, perfect: 0}); cbs.easy ??= true; cbs.obj ??= 0; cbs.start ??= 0; cbs.roomMax ??= 0; cbs.doubles ??= 0;
+// les objets : rotation libre et rotation rapide (par image), élan, marge pour tenir (radians), demi-hauteur, sym 2 = tient aussi à l'envers ; débloqués au nombre de culbutes
+const CB_OBJ = [
+  {name: 'Bouteille', spin: .11, tuck: .23, launch: 1, ok: .8, hh: 8, sym: 1, need: 0},
+  {name: 'Canette', spin: .14, tuck: .27, launch: 1.06, ok: .9, hh: 6, sym: 2, need: 15, rows: ['.kkkkk.', 'kssssSk', 'krrrrrk', 'krwwrrk', 'krrrrrk', 'krrrrrk', 'krwwrrk', 'krrrrrk', 'krrrrrk', 'kssssSk', '.kkkkk.'], pal: {k: '#1a2a3a', s: '#a8a8b8', S: '#ffffff', r: '#d83a3a', w: '#ffffff'}},
+  {name: 'Livre', spin: .08, tuck: .18, launch: 1, ok: 1, hh: 3, sym: 2, need: 40, rows: ['kkkkkkkkkkkk', 'kGGGGGGGGGyk', 'kwwwwwwwwwwk', 'kGGGGGGGGGyk', 'kkkkkkkkkkkk'], pal: {k: '#1a2a3a', G: '#3a8a4a', y: '#ffd84a', w: '#f0e8d8'}},
+  {name: 'Téléphone', spin: .13, tuck: .27, launch: 1, ok: .5, hh: 6, sym: 1, need: 80, rows: ['kkkkkk', 'kbbbbk', 'kblbbk', 'kbbbbk', 'kbbbbk', 'kbbbbk', 'kbbbbk', 'kbbbbk', 'kbbbbk', 'kbbbbk', 'kkwwkk', '.kkkk.'], pal: {k: '#1a1a22', b: '#3a5a9a', l: '#a8c8ff', w: '#8a8a9a'}},
+];
+const cbObj = () => CB_OBJ[cb?.obj || 0];
+const cbTilt = a => cbObj().sym === 2 ? ((a % Math.PI) + Math.PI * 1.5) % Math.PI - Math.PI / 2 : cbAngle(a);  // l'écart à « debout » (à l'envers compte pour la canette et le livre)
+const cbOk = () => cbObj().ok + (cb?.easy ? .3 : 0);
 let cb = null, cbac = null, cbMute = false;
 // la bouteille (7 x 16) : bouchon, goulot, eau, étiquette ; 32 images tournées d'avance, au pixel près
 const CB_BOTTLE = ['..kkk..', '..bbb..', '..kkk..', '..kwk..', '.kwwwk.', 'kwwwwwk', 'kwlllwk', 'kwlllwk', 'krrrrrk', 'kryyrrk', 'krrrrrk', 'kwlllwk', 'kwlllwk', 'kwlllwk', 'kwlllwk', '.kkkkk.'];
 const CB_PAL = {k: '#1a2a3a', b: '#3a7ad8', w: '#c8e8f8', l: '#7ac8f0', r: '#d83a3a', y: '#ffd84a'};
-const CB_ROT = Array.from({length: 32}, (_, i) => {
-  const a = i / 32 * Math.PI * 2, c = el('canvas'); c.width = c.height = 20; const g = c.getContext('2d'), ca = Math.cos(a), sa = Math.sin(a);
-  for (let y = 0; y < 20; y++) for (let x = 0; x < 20; x++) {  // pour chaque pixel de l'image, le pixel de la bouteille droite qui tombe dessus
-    const dx = x - 9.5, dy = y - 9.5, sx = Math.round(dx * ca + dy * sa + 3), sy = Math.round(-dx * sa + dy * ca + 7.5), row = CB_BOTTLE[sy], col = row && CB_PAL[row[sx]];
+const cbRotate = (rows, pal) => Array.from({length: 32}, (_, i) => {
+  const a = i / 32 * Math.PI * 2, c = el('canvas'); c.width = c.height = 20; const g = c.getContext('2d'), ca = Math.cos(a), sa = Math.sin(a), mx = (rows[0].length - 1) / 2, my = (rows.length - 1) / 2;
+  for (let y = 0; y < 20; y++) for (let x = 0; x < 20; x++) {  // pour chaque pixel de l'image, le pixel de l'objet droit qui tombe dessus
+    const dx = x - 9.5, dy = y - 9.5, sx = Math.round(dx * ca + dy * sa + mx), sy = Math.round(-dx * sa + dy * ca + my), row = rows[sy], col = row && pal[row[sx]];
     if (col) px(g, col, x, y);
   }
   return c; });
+const CB_ROTS = [cbRotate(CB_BOTTLE, CB_PAL)];
+const cbRot = () => CB_ROTS[cb?.obj || 0] ||= cbRotate(cbObj().rows, cbObj().pal);
 // les pièces qui se suivent, 15 meubles chacune : salon, cuisine, chambre, jardin ; leurs meubles selon la hauteur du dessus (haut, moyen, bas)
 const CB_ROOMS = [
   {name: 'LE SALON', tall: ['livres', 'commode'], mid: ['table', 'commode', 'caisse'], low: ['tabouret', 'caisse']},
@@ -423,25 +438,25 @@ function cbBeep(f, d, type = 'square', slide = 0, vol = .04) { if (cbMute) retur
 // une nouvelle partie garde le même objet : la boucle du jeu (gameLoop) continue de tourner dessus
 const renew = (old, o) => { if (!old) return o; for (const k of Object.keys(old)) if (k !== 'raf') delete old[k]; return Object.assign(old, o); };
 function cbNew() {
-  const g = cb?.g;
-  cb = renew(cb, {g, mode: 'ready', tick: 0, seen: 0, furn: [{x: 10, y: 100, w: 30, kind: 'table', n: 0}], at: 0, score: 0, flips: 0, perfect: 0, streak: 0, charge: 0, hold: false, cam: 0, dead: 0, record: false, rnd: seeded(Date.now() % 1e9), pop: null, drops: [], lives: CB.LIVES, respawn: 0, slow: 0, sk: 0, near: false, stars: [], flash: 0, room: 0});
-  cbGen(8); cbPlace(); cbInfo();
+  const g = cb?.g, start = Math.min(cbs.start, cbs.roomMax), lm = cbs.easy ? 5 : CB.LIVES;
+  cb = renew(cb, {g, easy: !!cbs.easy, obj: CB_OBJ[cbs.obj] && cbs.flips >= CB_OBJ[cbs.obj].need ? cbs.obj : 0, base: start * 15, livesMax: lm, furn: [{x: 10, y: 100, w: 30, kind: CB_ROOMS[start].mid[0], n: 0}], mode: 'ready', tick: 0, seen: 0, at: 0, score: 0, flips: 0, perfect: 0, streak: 0, charge: 0, hold: false, cam: 0, dead: 0, record: false, rnd: seeded(Date.now() % 1e9), pop: null, drops: [], lives: lm, respawn: 0, slow: 0, sk: 0, near: false, stars: [], flash: 0, room: start, doubles: 0});
+  cbGen(8); cbPlace(); cbInfo(); cbOpts();
 }
 function cbGen(n) {
   while (cb.furn.length < n) {
-    const p = cb.furn[cb.furn.length - 1], k = cb.furn.length, r = cb.rnd, d = Math.min(1, k / 40);
+    const p = cb.furn[cb.furn.length - 1], k = cb.furn.length, r = cb.rnd, d = Math.min(1, (k + cb.base) / 40) * (cb.easy ? .55 : 1);
     const w = Math.round(32 - d * 6 + r() * 10), gap = Math.round(14 + r() * (18 + d * 24)), y = Math.round(Math.max(60, Math.min(124, p.y + (r() - .5) * (34 + d * 26))));  // un peu plus proches et moins de dénivelé qu'avant
-    const R = CB_ROOMS[cbRoom(k)], list = y < 80 ? R.tall : y > 108 ? R.low : R.mid;
+    const R = CB_ROOMS[cbRoom(k + cb.base)], list = y < 80 ? R.tall : y > 108 ? R.low : R.mid;
     cb.furn.push({x: p.x + p.w + gap, y, w, kind: list[Math.floor(r() * list.length)], n: k});
   }
 }
-const cbPlace = () => { const f = cb.furn[cb.at]; Object.assign(cb, {x: f.x + Math.min(10, f.w / 2), y: f.y - 8, vx: 0, vy: 0, a: 0, w: 0, fly: false}); };
+const cbPlace = () => { const f = cb.furn[cb.at]; Object.assign(cb, {x: f.x + Math.min(10, f.w / 2), y: f.y - cbObj().hh, vx: 0, vy: 0, a: 0, w: 0, fly: false}); };
 // un pas de vol (partagé avec la vérification) : la gravité, la rotation (plus rapide si on maintient), et l'atterrissage
 function cbStep(b, tuck, furn) {
-  const prevBottom = b.y + 8;
-  b.vy += CB.G; b.x += b.vx; b.y += b.vy; b.a += tuck ? CB.TUCK : CB.SPIN;
-  const bx = b.x, bottom = b.y + 8;
-  if (b.vy > 0) for (let i = 0; i < furn.length; i++) { const f = furn[i]; if (prevBottom <= f.y && bottom >= f.y && bx >= f.x - 3 && bx <= f.x + f.w + 3) { b.y = f.y - 8; return {land: i}; } }
+  const O = cbObj(), prevBottom = b.y + O.hh;
+  b.vy += CB.G; b.x += b.vx; b.y += b.vy; b.a += tuck ? O.tuck : O.spin;
+  const bx = b.x, bottom = b.y + O.hh;
+  if (b.vy > 0) for (let i = 0; i < furn.length; i++) { const f = furn[i]; if (prevBottom <= f.y && bottom >= f.y && bx >= f.x - 3 && bx <= f.x + f.w + 3) { b.y = f.y - O.hh; return {land: i}; } }
   if (bottom >= CB.FLOOR) return {floor: true};
   return null;
 }
@@ -449,18 +464,19 @@ const cbAngle = a => { a %= Math.PI * 2; if (a > Math.PI) a -= Math.PI * 2; retu
 // où la bouteille va retomber si on ne maintient plus : le meuble, l'endroit, l'angle (null si rien dans les max pas)
 function cbPredict(src, max = 200) { const b = {x: src.x, y: src.y, vx: src.vx, vy: src.vy, a: src.a}, pts = [];
   for (let t = 0; t < max; t++) { const r = cbStep(b, false, cb.furn); if (t % 3 === 2) pts.push([b.x, b.y + 8]); if (r) return {land: r.land, floor: r.floor, x: b.x, y: b.y, a: b.a, pts}; } return null; }
-const cbLaunch = (b, p) => { b.vx = 1 + p * 2.2; b.vy = -(2 + p * 3.2); b.w = 0; b.fly = true; };
+const cbLaunch = (b, p) => { const L = cbObj().launch; b.vx = (1 + p * 2.2) * L; b.vy = -(2 + p * 3.2) * L; b.w = 0; b.fly = true; };
+const cbAuto = b => { const p = cbPredict(b); return !!p && p.land !== undefined && cbTilt(p.a) < -.12; };  // le mode facile : tourner plus vite tant que l'arrivée prévue est en retard sur « debout »
 function cbLanded(i) {
-  const a = Math.abs(cbAngle(cb.a));
+  const a = Math.abs(cbTilt(cb.a));
   if (i === cb.at) return cbFail('pareil');  // retombée sur le même meuble : rien gagné, rien perdu
-  if (a > CB.OK || i < cb.at) return cbFail('renversée');
-  const perfect = a < CB.PERFECT, jump = i - cb.at, gain = jump * (perfect ? 2 : 1);
-  cb.streak++; cb.flips++; if (perfect) cb.perfect++;
+  if (a > cbOk() || i < cb.at) return cbFail('renversée');
+  const turns = Math.floor(cb.a / (Math.PI * 2) + .15), fig = turns >= 3 ? 3 : turns >= 2 ? 2 : 1, perfect = a < CB.PERFECT, jump = i - cb.at, gain = jump * (perfect ? 2 : 1) * fig;
+  cb.streak++; cb.flips++; if (perfect) cb.perfect++; if (fig > 1) cb.doubles++;
   cb.score += gain * 10 + Math.min(5, cb.streak) * 2;
   cb.at = i; cb.a = 0; cb.fly = false; cb.vx = cb.vy = 0; cbGen(cb.at + 8);
-  cb.pop = {text: perfect ? 'PARFAIT !' : jump > 1 ? 'SAUT DE ' + jump : 'DEBOUT !', t: perfect ? 70 : 50, big: perfect};
+  cb.pop = {text: fig > 1 ? (fig > 2 ? 'TRIPLE' : 'DOUBLE') + (perfect ? ' PARFAIT !' : ' !') : perfect ? 'PARFAIT !' : jump > 1 ? 'SAUT DE ' + jump : 'DEBOUT !', t: perfect || fig > 1 ? 70 : 50, big: perfect || fig > 1};
   if (perfect) { cb.slow = 40; cb.flash = 8; for (let k = 0; k < 16; k++) { const an = k / 16 * Math.PI * 2; cb.stars.push({x: cb.x, y: cb.y + 6, vx: Math.cos(an) * 1.6, vy: Math.sin(an) * 1.6 - .6, t: 34}); } }
-  if (cbRoom(cb.at) !== cb.room) { cb.room = cbRoom(cb.at); setTimeout(() => { if (cb.mode === 'play') cb.pop = {text: CB_ROOMS[cb.room].name, t: 70, room: true}; }, perfect ? 900 : 500); }
+  if (cbRoom(cb.at + cb.base) !== cb.room) { cb.room = cbRoom(cb.at + cb.base); if (cb.at + cb.base < 60 && cb.room > cbs.roomMax) { cbs.roomMax = cb.room; saveGames(); cbOpts(); } setTimeout(() => { if (cb.mode === 'play') cb.pop = {text: CB_ROOMS[cb.room].name, t: 70, room: true}; }, perfect ? 900 : 500); }
   cbBeep(perfect ? 990 : 660, .08); if (!cbMute) setTimeout(() => cbBeep(perfect ? 1320 : 880, .12), 80);
 }
 function cbFail(how) {
@@ -469,7 +485,7 @@ function cbFail(how) {
   cb.how = how; cb.fly = false; cb.hold = false; cb.near = false;
   if (--cb.lives > 0) { cb.respawn = 60; cb.streak = 0; cb.pop = {text: 'OUPS ! ENCORE ' + cb.lives, t: 60}; cbBeep(220, .3, 'sawtooth', 90, .05); return; }
   cb.mode = 'over'; cb.dead = 0;
-  cbs.games++; cbs.flips += cb.flips; cbs.perfect += cb.perfect; cb.record = best('culbute', cb.score); saveGames(); cbInfo();
+  cbs.games++; cbs.flips += cb.flips; cbs.perfect += cb.perfect; cbs.doubles += cb.doubles; cb.record = best(cb.easy ? 'culbuteFacile' : 'culbute', cb.score); saveGames(); cbInfo(); cbOpts();
   cbBeep(180, .5, 'sawtooth', 50, .06);
 }
 function cbUpdate() {
@@ -481,7 +497,7 @@ function cbUpdate() {
   if (cb.respawn) { if (cb.respawn > 30 && cb.how === 'renversée') { cb.a += .2; cb.y = Math.min(cb.y + 2, CB.FLOOR - 4); } if (--cb.respawn === 0) cbPlace(); return; }
   if (cb.slow > 0 || cb.near) { if (cb.slow > 0) cb.slow--; if (++cb.sk % 2) return; }  // le ralenti : à l'approche d'une bonne réception, et après un PARFAIT
   if (!cb.fly) { if (cb.hold) cb.charge = Math.min(1, cb.charge + 1 / CB.CHARGE); }
-  else { const r = cbStep(cb, cb.hold, cb.furn); if (r?.land !== undefined) { cb.near = false; cbLanded(r.land); } else if (r?.floor) { cb.near = false; cbFail('tombée'); } else { const p = cbPredict(cb, 12); cb.near = !!p && p.land > cb.at && Math.abs(cbAngle(p.a)) < CB.OK; } }
+  else { const r = cbStep(cb, cb.easy ? cbAuto(cb) : cb.hold, cb.furn); if (r?.land !== undefined) { cb.near = false; cbLanded(r.land); } else if (r?.floor) { cb.near = false; cbFail('tombée'); } else { const p = cbPredict(cb, 12); cb.near = !!p && p.land > cb.at && Math.abs(cbTilt(p.a)) < cbOk(); } }
   // la caméra garde la bouteille au premier tiers
   cb.cam += (Math.max(0, cb.x - 50) - cb.cam) * .08;
 }
@@ -503,7 +519,7 @@ function cbDraw() {
   const bounds = [-1e9]; for (let n = 15; n < cb.furn.length; n += 15) bounds.push((cb.furn[n - 1].x + cb.furn[n - 1].w + cb.furn[n].x) / 2); bounds.push(1e9);
   for (let k = 0; k < bounds.length - 1; k++) {
     const x0 = Math.max(0, Math.round(bounds[k] - ox)), x1 = Math.min(W, Math.round(bounds[k + 1] - ox)); if (x1 <= x0) continue;
-    const room = k % CB_ROOMS.length; g.save(); g.beginPath(); g.rect(x0, 0, x1 - x0, H); g.clip();
+    const room = (k + cb.base / 15) % CB_ROOMS.length; g.save(); g.beginPath(); g.rect(x0, 0, x1 - x0, H); g.clip();
     const wo = ((-ox % 64) + 64) % 64; for (let x = wo - 64; x < W; x += 64) g.drawImage(CB_WALLS[room], x, 0);
     const dofs = ((-Math.round(ox * .5) % 240) + 240) % 240; for (let x = dofs - 240; x < W; x += 240) g.drawImage(CB_DECORS[room], x, 26);
     if (room === 1) { for (let x = ((-ox % 8) + 8) % 8 - 8, i = Math.floor(ox / 8); x < W; x += 8, i++) for (let y = FLOOR; y < H; y += 5) px(g, (i + (y - FLOOR) / 5) % 2 ? '#e8e8e0' : '#2a2a32', x, y, 8, 5); }  // le carrelage
@@ -520,16 +536,17 @@ function cbDraw() {
     const src = cb.fly ? cb : (() => { const b = {x: cb.x, y: cb.y, a: 0}; cbLaunch(b, .15 + cb.charge * .85); return b; })(), p = cbPredict(src);
     if (p) {
       if (!cb.fly) for (const [x, y] of p.pts) { px(g, '#1a1018', Math.round(x - ox) - 1, Math.round(y) - 1, 3, 3); px(g, '#ffffff', Math.round(x - ox), Math.round(y), 1, 1); }
-      const ok = p.land > cb.at && Math.abs(cbAngle(p.a)) < CB.OK, col = p.floor || p.land <= cb.at ? '#ff4a4a' : ok ? '#7ee07a' : '#ff8a3a', lx = Math.round(p.x - ox);
+      if (cb.easy && !cb.fly) { const b = {...src}; let r; for (let t = 0; t < 200 && !(r = cbStep(b, cbAuto(b), cb.furn)); t++); if (r) Object.assign(p, {a: b.a, x: b.x, y: b.y, land: r.land, floor: r.floor}); }  // en facile, l'arrivée avec la rotation automatique
+      const ok = p.land > cb.at && Math.abs(cbTilt(p.a)) < cbOk(), col = p.floor || p.land <= cb.at ? '#ff4a4a' : ok ? '#7ee07a' : '#ff8a3a', lx = Math.round(p.x - ox);
       if (p.land !== undefined && p.land !== cb.at) { const f = cb.furn[p.land]; px(g, col, Math.round(f.x - ox) - 1, Math.round(f.y) - 2, f.w + 2, 1); }
       const bob = (cb.tick >> 3) % 2; px(g, '#1a1018', lx - 3, Math.round(p.y) - 19 - bob, 7, 1); px(g, col, lx - 2, Math.round(p.y) - 19 - bob, 5, 1); px(g, col, lx - 1, Math.round(p.y) - 18 - bob, 3, 1); px(g, col, lx, Math.round(p.y) - 17 - bob, 1, 1);  // la flèche
-      const gf = ((Math.round(cbAngle(p.a) / (Math.PI * 2) * 32) % 32) + 32) % 32; g.globalAlpha = .45; g.drawImage(CB_ROT[gf], lx - 10, Math.round(p.y) - 10); g.globalAlpha = 1;
-      if (cb.fly && !ok && !p.floor && p.land > cb.at && !cb.hold && (cb.tick >> 2) % 2) pxFont(g, 'MAINTIENS !', W / 2, CB.HUD + 38, '#ff8a3a', 8, 'center');
+      const gf = ((Math.round(cbAngle(p.a) / (Math.PI * 2) * 32) % 32) + 32) % 32; g.globalAlpha = .45; g.drawImage(cbRot()[gf], lx - 10, Math.round(p.y) - 10); g.globalAlpha = 1;
+      if (!cb.easy && cb.fly && !ok && !p.floor && p.land > cb.at && !cb.hold && (cb.tick >> 2) % 2) pxFont(g, 'MAINTIENS !', W / 2, CB.HUD + 38, '#ff8a3a', 8, 'center');
     }
   }
   for (const d of cb.drops) px(g, '#7ac8f0', d.x - ox, d.y, 2, 1);
   const fr = ((Math.round(cbAngle(cb.a) / (Math.PI * 2) * 32) % 32) + 32) % 32;
-  g.drawImage(CB_ROT[fr], Math.round(cb.x - ox) - 10, Math.round(cb.y) - 10 + (cb.hold && !cb.fly ? Math.round(cb.charge * 2) : 0));
+  g.drawImage(cbRot()[fr], Math.round(cb.x - ox) - 10, Math.round(cb.y) - 10 + (cb.hold && !cb.fly ? Math.round(cb.charge * 2) : 0));
   // la jauge de charge à côté de la bouteille
   if (cb.mode === 'play' && !cb.fly && cb.hold) { const n = Math.round(cb.charge * 10), bx = Math.round(cb.x - ox) + 8, by = Math.round(cb.y) - 10; px(g, '#1a1018', bx, by - 1, 4, 22); for (let i = 0; i < 10; i++) px(g, i < n ? (i < 4 ? '#7ee07a' : i < 8 ? '#ffd84a' : '#ff8a3a') : '#3a2a32', bx + 1, by + 19 - i * 2, 2, 1); }
   for (const st of cb.stars) px(g, st.t > 20 ? '#ffffff' : '#ffd84a', st.x - ox, st.y, st.t > 12 ? 2 : 1, st.t > 12 ? 2 : 1);
@@ -540,15 +557,24 @@ function cbDraw() {
   else if (cb.pop) pxFont(g, cb.pop.text, W / 2, HUD + 24 - Math.round((50 - Math.min(50, cb.pop.t)) / 8), '#ffd84a', 8, 'center');
   px(g, '#140e18', 0, 0, W, HUD);
   pxFont(g, String(cb.score), 4, 9, '#ffffff', 8); pxFont(g, 'Meuble ' + cb.at, W / 2, 9, '#c8b0d8', 8, 'center');
-  for (let i = 0; i < CB.LIVES; i++) { const lx = W - 46 + i * 6; px(g, '#1a1018', lx, 2, 5, 9); px(g, i < cb.lives ? '#7ac8f0' : '#3a2a3a', lx + 1, 4, 3, 6); px(g, i < cb.lives ? '#3a7ad8' : '#3a2a3a', lx + 2, 2, 1, 2); }  // les bouteilles qui restent
+  for (let i = 0; i < cb.livesMax; i++) { const lx = W - 16 - cb.livesMax * 6 + i * 6; px(g, '#1a1018', lx, 2, 5, 9); px(g, i < cb.lives ? '#7ac8f0' : '#3a2a3a', lx + 1, 4, 3, 6); px(g, i < cb.lives ? '#3a7ad8' : '#3a2a3a', lx + 2, 2, 1, 2); }  // les bouteilles qui restent
   if (cb.streak > 1) pxFont(g, '×' + Math.min(5, cb.streak), W - 4, 9, '#ffd84a', 8, 'right');
-  if (cb.mode === 'ready') gameText(g, W, [['CULBUTE', '#7ac8f0', 16], ['Maintiens, lâche : saut', '#ffffff'], ['Maintiens en l\'air :', '#ffffff'], ['elle tourne plus vite', '#ffffff'], ['Pose-la debout !', '#b8b0c8'], ['Fantôme vert = debout', '#7ee07a'], ['Record ' + (games.best.culbute || 0), '#ffd84a']], 46);
+  const rec = games.best[cb.easy ? 'culbuteFacile' : 'culbute'] || 0;
+  if (cb.mode === 'ready') gameText(g, W, cb.easy ? [['CULBUTE', '#7ac8f0', 16], ['MODE FACILE', '#7ee07a'], ['Maintiens, lâche : saut', '#ffffff'], ['Elle tourne toute seule', '#ffffff'], ['Fantôme vert = c\'est bon', '#7ee07a'], ['Record ' + rec, '#ffd84a']]
+    : [['CULBUTE', '#7ac8f0', 16], ['Maintiens, lâche : saut', '#ffffff'], ['Maintiens en l\'air :', '#ffffff'], ['elle tourne plus vite', '#ffffff'], ['Pose-la debout !', '#b8b0c8'], ['Fantôme vert = debout', '#7ee07a'], ['Record ' + rec, '#ffd84a']], 46);
   if (cb.mode === 'pause') gameText(g, W, [['PAUSE', '#ffffff', 12], ['Espace : reprendre', '#b8b0c8']], 70);
-  if (cb.mode === 'over' && cb.dead > 40) gameText(g, W, [[cb.how === 'tombée' ? 'PAR TERRE !' : 'RENVERSÉE !', '#ff8a3a', 12], [cb.score + ' points · ' + cb.flips + (cb.flips > 1 ? ' culbutes' : ' culbute'), '#ffffff'], [cb.record ? 'NOUVEAU RECORD !' : 'Record ' + (games.best.culbute || 0), '#ffd84a'], [cb.dead > 60 ? 'Espace : recommencer' : '', '#b8b0c8']], 58);
+  if (cb.mode === 'over' && cb.dead > 40) gameText(g, W, [[cb.how === 'tombée' ? 'PAR TERRE !' : 'RENVERSÉE !', '#ff8a3a', 12], [cb.score + ' points · ' + cb.flips + (cb.flips > 1 ? ' culbutes' : ' culbute'), '#ffffff'], [cb.record ? 'NOUVEAU RECORD !' : 'Record ' + rec, '#ffd84a'], [cb.dead > 60 ? 'Espace : recommencer' : '', '#b8b0c8']], 58);
   if (cb.tick % 30 === 0) g.canvas.setAttribute('aria-label', 'Culbute : ' + (cb.mode === 'play' ? cb.score + ' points, meuble ' + cb.at + ', ' + cb.flips + ' culbutes' : cb.mode === 'over' ? 'partie finie, ' + cb.score + ' points' : cb.mode === 'pause' ? 'pause' : 'prêt'));
 }
+function cbOpts() {  // le mode, l'objet (débloqué au nombre de culbutes) et la pièce de départ (débloquée en y arrivant)
+  $('cbMode').textContent = 'MODE : ' + (cbs.easy ? 'FACILE' : 'EXPERT');
+  $('cbModeHint').textContent = cbs.easy ? 'Un seul geste : maintiens pour viser, lâche pour sauter ; la rotation se règle toute seule. Cinq essais, meubles plus proches.' : 'Tu règles aussi la rotation : maintiens en l\'air pour tourner plus vite. Trois essais.';
+  $('cbObjs').replaceChildren(...CB_OBJ.map((o, i) => { const open = cbs.flips >= o.need, b = el('button', 'btn' + ((cb?.obj ?? cbs.obj) === i ? ' main' : ''), open ? o.name : o.name + ' (' + o.need + ' culbutes)'); b.disabled = !open; b.onclick = () => { cbs.obj = i; saveGames(); cbNew(); b.blur(); }; return b; }));
+  $('cbRooms').replaceChildren(...CB_ROOMS.map((r, i) => { const b = el('button', 'btn' + (Math.min(cbs.start, cbs.roomMax) === i ? ' main' : ''), r.name.replace(/^L[EA] |^L'/, '')); b.disabled = i > cbs.roomMax; b.onclick = () => { cbs.start = i; saveGames(); cbNew(); b.blur(); }; return b; }));
+}
+$('cbMode').onclick = () => { cbs.easy = !cbs.easy; saveGames(); cbNew(); $('cbMode').blur(); };
 function cbInfo() {
-  $('cbStats').replaceChildren(...[['Meilleur score', games.best.culbute || 0], ['Parties', cbs.games], ['Culbutes', cbs.flips], ['Parfaites', cbs.perfect]].flatMap(([a, b]) => [el('span', '', a), el('b', '', String(b))]));
+  $('cbStats').replaceChildren(...[['Meilleur score', games.best.culbute || 0], ['Record facile', games.best.culbuteFacile || 0], ['Parties', cbs.games], ['Culbutes', cbs.flips], ['Parfaites', cbs.perfect], ['Doubles et triples', cbs.doubles]].flatMap(([a, b]) => [el('span', '', a), el('b', '', String(b))]));
 }
 const CB_KEYS = [' ', 'ArrowUp', 'Enter', 'z', 'w'];
 document.addEventListener('keydown', e => {
@@ -574,8 +600,24 @@ $('cbFs').onclick = () => { $('cbFs').blur(); try { if (document.fullscreenEleme
   requestAnimationFrame(loop);
 }
 function cbCheck() {  // vérification : depuis chaque meuble, il existe une charge et une durée de rotation rapide qui posent la bouteille debout sur le suivant ; pièces, vies
-  const keep = cb; cb = null; cbMute = true; cbNew(); cbGen(40);
+  const keep = cb, ks = {easy: cbs.easy, obj: cbs.obj, start: cbs.start, flips: cbs.flips}; Object.assign(cbs, {easy: false, obj: 0, start: 0}); cb = null; cbMute = true; cbNew(); cbGen(40);
   let reach = 0, total = 0;
+  const bad = [];
+  for (let o = 1; o < CB_OBJ.length; o++) { cb.obj = o; let n = 0;  // chaque objet peut aussi passer les 6 premiers meubles
+    for (let i = 0; i < 6; i++) { const f = cb.furn[i]; let ok = false;
+      for (let p = .15; p <= 1 && !ok; p += .03) for (let tuck = 0; tuck < 90 && !ok; tuck += 3) { const b = {x: f.x + Math.min(10, f.w / 2), y: f.y - cbObj().hh, a: 0}; cbLaunch(b, p);
+        for (let t = 0; t < 200; t++) { const r = cbStep(b, t < tuck, cb.furn); if (r) { if (r.land === i + 1 && Math.abs(cbTilt(b.a)) < cbOk()) ok = true; break; } } }
+      if (ok) n++; }
+    if (n < 6) bad.push(CB_OBJ[o].name + ' ' + n + '/6'); }
+  cb.obj = 0; cb.easy = true; { let n = 0;  // le mode facile : en ne choisissant que l'élan, la rotation automatique pose la bouteille debout
+    for (let i = 0; i < 8; i++) { const f = cb.furn[i]; let ok = false;
+      for (let p = .15; p <= 1 && !ok; p += .05) { const b = {x: f.x + Math.min(10, f.w / 2), y: f.y - 8, a: 0}; cbLaunch(b, p); for (let t = 0; t < 200; t++) { const r = cbStep(b, cbAuto(b), cb.furn); if (r) { if (r.land === i + 1 && Math.abs(cbTilt(b.a)) < cbOk()) ok = true; break; } } }
+      if (ok) n++; }
+    if (n < 8) bad.push('mode facile ' + n + '/8'); }
+  cb.easy = false; cb.obj = 1; if (Math.abs(cbTilt(Math.PI)) > .01 || Math.abs(cbTilt(Math.PI * 2.1)) > .4) bad.push('canette à l’envers'); cb.obj = 0; if (Math.abs(cbTilt(Math.PI)) < 3) bad.push('bouteille à l’envers');
+  cb.at = 0; cb.a = Math.PI * 4.02; cb.score = 0; cbLanded(1); if (!(cb.doubles === 1 && cb.pop.text.startsWith('DOUBLE') && cb.score >= 40)) bad.push('double : ' + cb.pop?.text + ' ' + cb.score);
+  cb.a = Math.PI * 6.05; cbLanded(2); if (!cb.pop.text.startsWith('TRIPLE')) bad.push('triple');
+  cbNew(); cbGen(40);
   for (let i = 0; i < 12; i++) {  // les 12 premiers suffisent au démarrage (la simulation complète a été faite sur 5 parties de 40 meubles)
     total++; const f = cb.furn[i]; let ok = false;
     for (let p = .15; p <= 1 && !ok; p += .03) for (let tuck = 0; tuck < 90 && !ok; tuck += 3) {
@@ -584,15 +626,15 @@ function cbCheck() {  // vérification : depuis chaque meuble, il existe une cha
     }
     if (ok) reach++;
   }
-  const bad = []; if (reach !== total) bad.push('meubles atteignables ' + reach + '/' + total);
+  if (reach !== total) bad.push('meubles atteignables ' + reach + '/' + total);
   if (!(cbRoom(0) === 0 && cbRoom(15) === 1 && cbRoom(30) === 2 && cbRoom(45) === 3 && cbRoom(60) === 0)) bad.push('pièces');
   if (!cb.furn.slice(15, 30).every(f => [...CB_ROOMS[1].tall, ...CB_ROOMS[1].mid, ...CB_ROOMS[1].low].includes(f.kind))) bad.push('meubles de la cuisine');
   cb.mode = 'play'; cb.fly = true; cbFail('tombée'); if (cb.mode !== 'play' || cb.lives !== CB.LIVES - 1 || !cb.respawn) bad.push('une vie perdue');
-  cb = keep; cbMute = false;
+  Object.assign(cbs, ks); cb = keep; cbMute = false;
   return bad.length ? bad.join(', ') : 'ok';
 }
 { const c = cbCheck(); console.assert(c === 'ok', 'culbute', c); }
-$('cbCanvas').__cb = {st: () => cb, CB, check: cbCheck, predict: cbPredict, room: cbRoom};
+$('cbCanvas').__cb = {st: () => cb, CB, check: cbCheck, predict: cbPredict, room: cbRoom, cbs, opts: cbOpts};
 ctx.onOpen(() => {
   if (!cb || !cb.g) { cbNew(); cb.g = $('cbCanvas').getContext('2d'); }
   gameLoop(cb, 'culbute', cbUpdate, cbDraw); cbInfo();
