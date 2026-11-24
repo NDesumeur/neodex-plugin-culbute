@@ -1,9 +1,9 @@
 {
   "pluginId": "neodex.culbute",
   "repo": "NDesumeur/neodex-plugin-culbute",
-  "version": "1.1.2",
-  "sha256": "994fabbcfe657af9ae45ba81aef0e246fb341c19da277875e1851aadb8a17fe1",
-  "approvedAt": "2026-11-20T01:51:12.822Z",
+  "version": "1.2.0",
+  "sha256": "886549a4aaa7f6e37561fc57de26b89c8334b57cef8bb6fa83225d8812793710",
+  "approvedAt": "2026-11-24T15:56:15.209Z",
   "neobase": ">=4.0.0",
-  "signature": "E4TYXW/RIEyzEa5T1mR9xk4zmhBrTlONI4UTb/tSG9dXuoa2HS1BltCduWlQPSQqucw5w9Jqxh1Go6JRm/LuCA=="
+  "signature": "eKof3DVt4aoaTqEXrprt3Zg/3iAmbJZK/eruMXecjGWSxb6xzX9uRyazjpnS+uFM8cYK04iugJW6u25WckziCQ=="
 }
