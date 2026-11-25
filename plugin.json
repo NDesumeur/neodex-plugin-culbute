@@ -1,7 +1,7 @@
 {
   "id": "neodex.culbute",
   "name": "Culbute",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "author": "NDesumeur",
   "description": "Jeu d'adresse : une bouteille d'eau saute de meuble en meuble, du salon à la cuisine, la chambre et le jardin. Maintiens pour charger le saut, lâche pour la lancer, et maintiens en l'air pour la faire tourner plus vite : elle doit retomber debout. Le fantôme de la bouteille montre où et dans quel sens elle va retomber. Trois bouteilles par partie, culbutes parfaites au ralenti qui comptent double, sauts par-dessus un meuble et séries. Manette et plein écran. Score et record. Un mode facile à un seul geste, quatre objets (bouteille, canette, livre, téléphone), des doubles et des triples.",
   "icon": "icon.png",
@@ -22,5 +22,62 @@
   "sdk": "2.1.0",
   "permissions": [
     "storage"
+  ],
+  "succes": [
+    {
+      "id": "premier",
+      "nom": "Hop !",
+      "texte": "Finir une première partie"
+    },
+    {
+      "id": "cent",
+      "nom": "Acrobate",
+      "texte": "Réussir 100 sauts en tout"
+    },
+    {
+      "id": "mille",
+      "nom": "Bouteille volante",
+      "texte": "Réussir 1 000 sauts en tout"
+    },
+    {
+      "id": "parfaits",
+      "nom": "Pile debout",
+      "texte": "Réussir 50 atterrissages parfaits"
+    },
+    {
+      "id": "doubles",
+      "nom": "Double salto",
+      "texte": "Réussir 10 doubles sauts"
+    },
+    {
+      "id": "jardin",
+      "nom": "Jusqu'au jardin",
+      "texte": "Arriver dans la dernière pièce"
+    },
+    {
+      "id": "objets",
+      "nom": "Tout ce qui saute",
+      "texte": "Débloquer tous les objets"
+    },
+    {
+      "id": "difficile",
+      "nom": "Sans filet",
+      "texte": "Marquer 50 points sans le mode facile",
+      "cache": true
+    }
+  ],
+  "records": [
+    {
+      "id": "score",
+      "nom": "Meilleur score",
+      "sens": "haut",
+      "format": "nombre"
+    },
+    {
+      "id": "facile",
+      "nom": "Meilleur score (facile)",
+      "sens": "haut",
+      "format": "nombre"
+    }
   ]
 }

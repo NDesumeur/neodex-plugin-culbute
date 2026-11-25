@@ -304,6 +304,9 @@ export default async function (ctx) {
   const best = (k, v) => { const b = games.best[k]; if (v > (b ?? 0)) {  // un score nul n'est jamais un record
     games.best[k] = v; saveGames(); return true; } return false; };
   const gstore = (k, init) => (games[k] ??= init);
+  // les trophées de NeoDex (3.4.8 et plus) : succès et records déclarés dans plugin.json ; sur un NeoDex plus ancien, rien ne se passe
+  const trophy = id => { ctx.games?.unlock(id).catch(() => {}); };
+  const trophyRecord = (id, v) => { if (v != null && Number.isFinite(+v)) ctx.games?.record(id, +v).catch(() => {}); };
 function gameLoop(st, appKey, update, draw) {
   cancelAnimationFrame(st.raf);
   const STEP = 1000 / 60; let acc = 0, last = performance.now();
@@ -574,6 +577,7 @@ function cbOpts() {  // le mode, l'objet (débloqué au nombre de culbutes) et l
 }
 $('cbMode').onclick = () => { cbs.easy = !cbs.easy; saveGames(); cbNew(); $('cbMode').blur(); };
 function cbInfo() {
+  setTimeout(cbTrophies);
   $('cbStats').replaceChildren(...[['Meilleur score', games.best.culbute || 0], ['Record facile', games.best.culbuteFacile || 0], ['Parties', cbs.games], ['Culbutes', cbs.flips], ['Parfaites', cbs.perfect], ['Doubles et triples', cbs.doubles]].flatMap(([a, b]) => [el('span', '', a), el('b', '', String(b))]));
 }
 const CB_KEYS = [' ', 'ArrowUp', 'Enter', 'z', 'w'];
@@ -635,6 +639,13 @@ function cbCheck() {  // vérification : depuis chaque meuble, il existe une cha
 }
 { const c = cbCheck(); console.assert(c === 'ok', 'culbute', c); }
 $('cbCanvas').__cb = {st: () => cb, CB, check: cbCheck, predict: cbPredict, room: cbRoom, cbs, opts: cbOpts};
+// les trophées, tirés des statistiques et des records gardés (aussi à l'ouverture : ce qui a été fait avant compte)
+function cbTrophies() {
+  const b = games.best.culbute, e = games.best.culbuteFacile, sig = [b, e, cbs.games, cbs.flips, cbs.perfect, cbs.doubles, cbs.roomMax].join(); if (sig === cbTrophies.sig) return; cbTrophies.sig = sig;
+  trophyRecord('score', b || null); trophyRecord('facile', e || null);
+  if (cbs.games >= 1) trophy('premier'); if (cbs.flips >= 100) trophy('cent'); if (cbs.flips >= 1000) trophy('mille'); if (cbs.perfect >= 50) trophy('parfaits');
+  if (cbs.doubles >= 10) trophy('doubles'); if (cbs.roomMax >= CB_ROOMS.length - 1) trophy('jardin'); if (CB_OBJ.every(o => cbs.flips >= o.need)) trophy('objets'); if (b >= 50) trophy('difficile');
+}
 ctx.onOpen(() => {
   if (!cb || !cb.g) { cbNew(); cb.g = $('cbCanvas').getContext('2d'); }
   gameLoop(cb, 'culbute', cbUpdate, cbDraw); cbInfo();
